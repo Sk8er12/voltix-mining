@@ -1,6 +1,6 @@
 
 const MINING_DURATION = 24 * 60 * 60;
-const MINING_REWARD = 1000000; // 1 VOLTIX
+const MINING_REWARD = 100000000; // 100 VOLTIX
 const TOKEN_DECIMALS = 1000000;
 
 const json = (data, status = 200) =>
