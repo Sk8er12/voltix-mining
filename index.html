@@ -1,0 +1,70 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#080D18">
+<title>VOLTIX Mining</title>
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;background:#080D18;color:#fff;
+ font-family:-apple-system,BlinkMacSystemFont,Arial,sans-serif;
+ min-height:100vh;display:flex;align-items:center;
+ justify-content:center;padding:24px;
+}
+.app{width:100%;max-width:420px;text-align:center}
+.logo{
+ width:112px;height:112px;margin:0 auto 25px;
+ border-radius:32px;
+ background:linear-gradient(145deg,#153B75,#071326);
+ border:1px solid #2767B8;
+ display:grid;place-items:center;
+ box-shadow:0 0 55px #0879ff35;
+ font-size:54px;font-weight:900;color:#62B7FF;
+}
+h1{font-size:36px;letter-spacing:5px;margin:0}
+.sub{color:#8194B2;letter-spacing:4px;font-size:11px;margin-top:10px}
+.tag{
+ display:inline-block;margin-top:32px;padding:9px 17px;
+ border:1px solid #24446C;border-radius:30px;
+ color:#65B7FF;font-size:12px;letter-spacing:2px
+}
+h2{font-size:24px;margin:25px 0 10px}
+.desc{color:#8999B1;font-size:14px;line-height:1.6}
+.connect{
+ width:100%;margin-top:35px;padding:19px;
+ border:0;border-radius:16px;
+ background:linear-gradient(100deg,#1679E9,#38B7FF);
+ color:white;font-size:16px;font-weight:700;
+ box-shadow:0 8px 35px #168bff35;
+}
+.note{font-size:11px;color:#687B96;margin-top:18px}
+.footer{margin-top:65px;color:#52647E;font-size:11px;letter-spacing:2px}
+</style>
+</head>
+<body>
+<main class="app">
+ <div class="logo">V</div>
+ <h1>VOLTIX</h1>
+ <div class="sub">MINING ECOSYSTEM</div>
+ <div class="tag">● NEXT GENERATION MINING</div>
+ <h2>Mine. Earn. Grow.</h2>
+ <p class="desc">
+ Welcome to VOLTIX.<br>
+ Connect your TON wallet to enter the ecosystem.
+ </p>
+ <button class="connect" id="connect">
+   Connect TON Wallet
+ </button>
+ <p class="note">SECURE CONNECTION · TON CONNECT</p>
+ <div class="footer">POWERED BY TON BLOCKCHAIN</div>
+</main>
+<script>
+document.getElementById("connect").addEventListener("click",()=>{
+ alert("TON Connect will be activated after we publish the app and its wallet manifest.");
+});
+</script>
+</body>
+</html>
