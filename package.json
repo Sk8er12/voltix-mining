@@ -1,0 +1,10 @@
+{
+  "name": "voltix-mining",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@ton/crypto": "^3.3.0",
+    "@ton/ton": "^15.1.0"
+  }
+}
