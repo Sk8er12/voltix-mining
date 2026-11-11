@@ -38,6 +38,13 @@ const levelInfo = lvl => MINER_LEVELS[Math.min(Math.max(lvl || 1, 1), MINER_LEVE
 const DAILY_BONUS = 10;
 const DAILY_MAX_STREAK = 7;
 
+// Withdrawals: requested in the app, paid out manually by an admin (1–24 h).
+const WITHDRAW_MIN = V(10_000);
+const WITHDRAW_FEE_PERCENT = 5;             // burned, the user receives the rest
+const WITHDRAW_COOLDOWN = 48 * 60 * 60;     // one request per 48 h
+// Optional variable ADMIN_WALLETS: comma separated raw addresses (0:abc...) allowed
+// to approve / reject withdrawals.
+
 // One-time tasks. "Active" friends are invited users who claimed at least one mining reward.
 const TASKS = [
   { id: "first_claim", title: "Claim your first mining reward", reward: 25, goal: 1, stat: "claims" },
@@ -560,6 +567,51 @@ async function freshProfile(db, userId) {
   return profile(db, user);
 }
 
+// ---------------------------------------------------------------- withdrawals
+
+// "12345.5" -> micro units; up to 6 decimals.
+function parseAmount(v) {
+  const s = String(v ?? "").trim();
+  const m = /^(\d{1,9})(?:\.(\d{1,6}))?$/.exec(s);
+  if (!m) throw new HttpError("Invalid amount");
+  return Number(m[1]) * TOKEN_DECIMALS + Number((m[2] || "").padEnd(6, "0"));
+}
+
+function isAdmin(env, user) {
+  const list = String(env.ADMIN_WALLETS || "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+  return list.includes(String(user.wallet_address).toLowerCase());
+}
+
+async function requireAdmin(request, env, db) {
+  const auth = await authUser(request, db);
+  if (!isAdmin(env, auth.user)) throw new HttpError("Forbidden", 403);
+  return auth;
+}
+
+function withdrawalView(w) {
+  return {
+    id: w.id,
+    amount: formatBalance(w.amount_micro),
+    fee: formatBalance(w.fee_micro),
+    net: formatBalance(w.net_micro),
+    wallet: friendlyAddress(w.wallet_address),
+    status: w.status,
+    created_at: w.created_at,
+    processed_at: w.processed_at,
+    tx_hash: w.tx_hash
+  };
+}
+
+async function notifyTelegram(env, telegramId, text) {
+  if (!env.BOT_TOKEN || !telegramId) return;
+  try {
+    await tgCall(env.BOT_TOKEN, "sendMessage", {
+      chat_id: telegramId, text, parse_mode: "HTML",
+      reply_markup: { inline_keyboard: [[{ text: "Open VOLTIX", web_app: { url: APP_URL } }]] }
+    });
+  } catch (e) { console.warn("telegram notify failed", e.message); }
+}
+
 // ---------------------------------------------------------------- routes
 
 const routes = {
@@ -736,6 +788,120 @@ const routes = {
     if (got !== await webhookSecret(env.BOT_TOKEN)) throw new HttpError("Forbidden", 403);
     await handleTelegramUpdate(await readJson(request), env);
     return {};
+  },
+
+  // Wallet tab: rules, cooldown, totals and the user's withdrawal history.
+  "GET /api/withdrawals": async ({ request, env, db }) => {
+    const { user } = await authUser(request, db);
+    const t = now();
+    const [{ results }, last, paid] = await Promise.all([
+      db.prepare("SELECT * FROM withdrawals WHERE user_id = ? ORDER BY id DESC LIMIT 50").bind(user.id).all(),
+      db.prepare(
+        "SELECT MAX(created_at) AS t FROM withdrawals WHERE user_id = ? AND status <> 'rejected'"
+      ).bind(user.id).first(),
+      db.prepare(
+        "SELECT COALESCE(SUM(net_micro), 0) AS total FROM withdrawals WHERE user_id = ? AND status = 'paid'"
+      ).bind(user.id).first()
+    ]);
+    const pending = results.some(w => w.status === "pending");
+    const nextAt = last.t ? last.t + WITHDRAW_COOLDOWN : 0;
+    return {
+      balance: formatBalance(user.balance_micro),
+      wallet: friendlyAddress(user.wallet_address),
+      total_withdrawn: formatBalance(paid.total),
+      pending,
+      next_available_at: nextAt > t ? nextAt : null,
+      now: t,
+      rules: {
+        min: formatBalance(WITHDRAW_MIN),
+        fee_percent: WITHDRAW_FEE_PERCENT,
+        cooldown_hours: WITHDRAW_COOLDOWN / 3600,
+        processing: "1–24 hours"
+      },
+      is_admin: isAdmin(env, user),
+      withdrawals: results.map(withdrawalView)
+    };
+  },
+
+  "POST /api/withdraw": async ({ request, env, db }) => {
+    const { user } = await authUser(request, db);
+    const body = await readJson(request);
+    const amount = parseAmount(body.amount);
+    if (amount < WITHDRAW_MIN) throw new HttpError(`Minimum withdrawal is ${formatBalance(WITHDRAW_MIN)} VOLTIX`);
+    const t = now();
+
+    const last = await db.prepare(
+      "SELECT MAX(created_at) AS t FROM withdrawals WHERE user_id = ? AND status <> 'rejected'"
+    ).bind(user.id).first();
+    if (last.t && t - last.t < WITHDRAW_COOLDOWN) {
+      throw new HttpError("Only one withdrawal per 48 hours", 409);
+    }
+
+    const fee = Math.floor(amount * WITHDRAW_FEE_PERCENT / 100);
+    // The partial unique index allows a single pending request per user.
+    const inserted = await db.prepare(`
+      INSERT OR IGNORE INTO withdrawals (user_id, amount_micro, fee_micro, net_micro, wallet_address, status, created_at)
+      VALUES (?, ?, ?, ?, ?, 'pending', ?)
+    `).bind(user.id, amount, fee, amount - fee, user.wallet_address, t).run();
+    if (!inserted.meta.changes) throw new HttpError("You already have a withdrawal in progress", 409);
+    const id = inserted.meta.last_row_id;
+
+    const paid = await db.prepare(
+      "UPDATE users SET balance_micro = balance_micro - ? WHERE id = ? AND balance_micro >= ?"
+    ).bind(amount, user.id, amount).run();
+    if (!paid.meta.changes) {
+      await db.prepare("DELETE FROM withdrawals WHERE id = ?").bind(id).run();
+      throw new HttpError("Not enough VOLTIX", 409);
+    }
+    await db.prepare(
+      "INSERT INTO transactions (user_id, amount_micro, type, created_at) VALUES (?, ?, 'withdrawal', ?)"
+    ).bind(user.id, -amount, t).run();
+
+    const w = await db.prepare("SELECT * FROM withdrawals WHERE id = ?").bind(id).first();
+    return {
+      message: "Withdrawal requested",
+      withdrawal: withdrawalView(w),
+      user: await freshProfile(db, user.id)
+    };
+  },
+
+  // Admin: requests waiting for payout (oldest first) and the latest processed ones.
+  "GET /api/admin/withdrawals": async ({ request, env, db }) => {
+    await requireAdmin(request, env, db);
+    const [pending, recent] = await Promise.all([
+      db.prepare("SELECT * FROM withdrawals WHERE status = 'pending' ORDER BY id LIMIT 100").all(),
+      db.prepare("SELECT * FROM withdrawals WHERE status <> 'pending' ORDER BY processed_at DESC LIMIT 30").all()
+    ]);
+    return { pending: pending.results.map(withdrawalView), recent: recent.results.map(withdrawalView) };
+  },
+
+  // Admin: { id, action: "paid", tx_hash? } after sending the coins, or { id, action: "reject" } (refunds).
+  "POST /api/admin/withdrawals/process": async ({ request, env, db }) => {
+    await requireAdmin(request, env, db);
+    const body = await readJson(request);
+    const id = Number(body.id);
+    if (!Number.isSafeInteger(id)) throw new HttpError("Invalid id");
+    if (body.action !== "paid" && body.action !== "reject") throw new HttpError("Invalid action");
+    const txHash = body.tx_hash ? String(body.tx_hash).trim().slice(0, 200) : null;
+    const t = now();
+
+    const status = body.action === "paid" ? "paid" : "rejected";
+    const done = await db.prepare(
+      "UPDATE withdrawals SET status = ?, processed_at = ?, tx_hash = ? WHERE id = ? AND status = 'pending'"
+    ).bind(status, t, txHash, id).run();
+    if (!done.meta.changes) throw new HttpError("Withdrawal is not pending", 409);
+
+    const w = await db.prepare("SELECT * FROM withdrawals WHERE id = ?").bind(id).first();
+    const owner = await db.prepare("SELECT telegram_id FROM users WHERE id = ?").bind(w.user_id).first();
+    if (status === "rejected") {
+      await credit(db, w.user_id, w.amount_micro, "withdrawal_refund", t);
+      await notifyTelegram(env, owner && owner.telegram_id,
+        `↩️ Your withdrawal of <b>${Number(formatBalance(w.amount_micro)).toLocaleString("en-US")} VOLTIX</b> was declined. The coins are back on your balance.`);
+    } else {
+      await notifyTelegram(env, owner && owner.telegram_id,
+        `✅ <b>Withdrawal sent!</b>\n\n${Number(formatBalance(w.net_micro)).toLocaleString("en-US")} VOLTIX are on the way to your wallet.`);
+    }
+    return { message: status === "paid" ? "Marked as paid" : "Rejected and refunded", withdrawal: withdrawalView(w) };
   },
 
   "POST /api/upgrade": async ({ request, db }) => {

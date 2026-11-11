@@ -56,6 +56,22 @@ CREATE TABLE IF NOT EXISTS transactions (
 );
 CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id, id);
 
+-- Withdrawal requests (paid out manually by an admin)
+CREATE TABLE IF NOT EXISTS withdrawals (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id        INTEGER NOT NULL REFERENCES users(id),
+  amount_micro   INTEGER NOT NULL,              -- taken from the balance
+  fee_micro      INTEGER NOT NULL,              -- 5% fee
+  net_micro      INTEGER NOT NULL,              -- sent to the wallet
+  wallet_address TEXT    NOT NULL,              -- raw payout address
+  status         TEXT    NOT NULL,              -- pending | paid | rejected
+  created_at     INTEGER NOT NULL,
+  processed_at   INTEGER,
+  tx_hash        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_withdrawals_user ON withdrawals(user_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_withdrawals_one_pending ON withdrawals(user_id) WHERE status = 'pending';
+
 -- One-time ton_proof challenges
 CREATE TABLE IF NOT EXISTS login_payloads (
   payload    TEXT    PRIMARY KEY,

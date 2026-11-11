@@ -276,6 +276,44 @@ button:disabled{cursor:default}
 .empty{color:var(--dim);text-align:center;padding:22px 0;font-size:13px;justify-content:center!important}
 .back{display:inline-flex;align-items:center;gap:6px;background:none;border:0;color:var(--cyan);font-weight:700;font-size:13px;padding:0 0 10px}
 
+/* wallet */
+.w-addr{display:flex;align-items:center;gap:10px;margin-top:12px;padding:12px 12px 12px 14px;border-radius:14px;background:rgba(0,0,0,.25);border:1px solid var(--edge)}
+.w-addr span{flex:1;min-width:0;font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--cyan);overflow-wrap:anywhere;line-height:1.5}
+.w-addr button{border:0;border-radius:10px;background:rgba(255,255,255,.08);padding:9px 12px;font-size:12px;font-weight:700;flex:none}
+.w-head{display:flex;align-items:center;gap:8px;font-weight:800;font-size:15px}
+.w-head::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px var(--ok)}
+.rules{list-style:none;margin:14px 0 0;padding:14px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)}
+.rules li{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:#C9D3EE;padding:6px 0;line-height:1.45}
+.rules li i{font-style:normal;width:22px;text-align:center;flex:none}
+.cool{margin-top:14px;padding:16px;border-radius:16px;text-align:center;background:linear-gradient(145deg,rgba(255,200,61,.12),rgba(255,138,28,.06));border:1px solid rgba(255,200,61,.4)}
+.cool .t1{color:var(--gold);font-weight:700;font-size:13px}
+.cool .t2{font-family:var(--display);font-size:28px;font-weight:800;color:var(--gold);margin-top:6px;text-shadow:0 0 18px rgba(255,200,61,.5);font-variant-numeric:tabular-nums}
+.amt-row{display:flex;justify-content:space-between;align-items:baseline;margin-top:18px}
+.amt-box{display:flex;align-items:center;gap:10px;margin-top:8px;padding:6px 16px;border-radius:16px;background:rgba(0,0,0,.3);border:1px solid var(--edge);transition:border-color .2s,box-shadow .2s}
+.amt-box:focus-within{border-color:var(--edge-hi);box-shadow:0 0 0 3px rgba(0,229,255,.12)}
+.amt-box input{flex:1;min-width:0;background:none;border:0;outline:0;color:var(--text);font-family:var(--display);font-size:24px;font-weight:700;padding:10px 0}
+.amt-box b{font-family:var(--display);color:var(--cyan);font-size:13px;letter-spacing:1px}
+.chips{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:10px}
+.chips button{border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);border-radius:12px;padding:10px 0;font-size:12px;font-weight:800;color:var(--muted)}
+.chips button:active{transform:scale(.95)}
+.chips button.max{color:var(--gold);border-color:rgba(255,200,61,.35)}
+.receive{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin:14px 0}
+.receive b{color:var(--ok);font-family:var(--display);font-size:14px}
+.badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:800;letter-spacing:.5px;margin-top:4px}
+.badge.pending{color:var(--gold);background:rgba(255,200,61,.12)}
+.badge.paid{color:var(--ok);background:rgba(46,242,163,.12)}
+.badge.rejected{color:var(--err);background:rgba(255,92,122,.12)}
+.list .r{text-align:right}
+.list a{color:var(--cyan);font-size:12px}
+.admin{border-color:rgba(255,61,203,.35)}
+.adm-row{padding:14px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.adm-row:last-child{border-bottom:0}
+.adm-row .top-line{display:flex;justify-content:space-between;gap:10px;font-weight:700}
+.adm-row .w{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--cyan);overflow-wrap:anywhere;margin-top:6px}
+.adm-row .acts{display:flex;gap:8px;margin-top:10px}
+.adm-row input{flex:1;min-width:0;background:rgba(0,0,0,.3);border:1px solid var(--edge);border-radius:10px;color:var(--text);padding:9px 10px;font-size:12px;outline:0}
+.pill.red{background:linear-gradient(100deg,#c2185b,var(--err));box-shadow:none}
+
 /* bottom nav */
 .nav{
  position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));z-index:5;
@@ -446,6 +484,49 @@ button:disabled{cursor:default}
    </div>
   </div>
 
+  <!-- Wallet -->
+  <div class="pane hidden" data-pane="wallet">
+   <div class="glass card">
+    <div class="sec-title grad-text">WALLET</div>
+    <div class="stats two">
+     <div class="stat"><div class="label">Available</div><div class="v" id="wBalance">0</div></div>
+     <div class="stat"><div class="label">Withdrawn</div><div class="v" id="wTotal">0</div></div>
+    </div>
+    <div style="margin-top:16px" class="w-head">Wallet connected</div>
+    <div class="w-addr"><span id="wAddr"></span><button id="wCopy">Copy</button></div>
+    <p class="hint">Withdrawals are sent to this wallet. To use another one, disconnect and sign in with it.</p>
+   </div>
+
+   <div class="glass card">
+    <div class="label">Withdraw VOLTIX</div>
+    <ul class="rules">
+     <li><i>⏱</i><span>Processing time: 1–24 hours</span></li>
+     <li><i>🔁</i><span>Limit: 1 request every <b id="rCool">48</b> hours</span></li>
+     <li><i>🔒</i><span>A new request can't be made while the previous one is processing</span></li>
+     <li><i>⬇️</i><span>Minimum withdrawal: <b id="rMin">10,000</b> VOLTIX</span></li>
+     <li><i>％</i><span>Network fee: <b id="rFee">5</b>%</span></li>
+    </ul>
+    <div class="cool hidden" id="wCool"><div class="t1" id="wCoolTitle">Next withdrawal available in</div><div class="t2" id="wCoolTimer">--:--:--</div></div>
+    <div class="amt-row"><div class="label">Amount</div><div class="label" id="wMinLbl">Min. 10,000</div></div>
+    <div class="amt-box"><input id="wAmount" inputmode="decimal" autocomplete="off" placeholder="10000"><b>VOLTIX</b></div>
+    <div class="chips">
+     <button data-amt="10000">10k</button><button data-amt="25000">25k</button><button data-amt="50000">50k</button><button data-amt="100000">100k</button><button class="max" data-amt="max">MAX</button>
+    </div>
+    <div class="receive"><span>You receive (after <span id="wFeeLbl">5</span>% fee)</span><b id="wNet">0.00 VOLTIX</b></div>
+    <button class="cta" id="wSubmit">Withdraw</button>
+   </div>
+
+   <div class="glass card">
+    <div class="label">Withdrawal history</div>
+    <ul class="list" id="wList" style="margin-top:6px"></ul>
+   </div>
+
+   <div class="glass card admin hidden" id="adminCard">
+    <div class="label" style="color:var(--pink)">Admin · pending payouts</div>
+    <div id="adminList"></div>
+   </div>
+  </div>
+
   <!-- History -->
   <div class="pane hidden" data-pane="history">
    <div class="glass card">
@@ -470,6 +551,9 @@ button:disabled{cursor:default}
  </button>
  <button data-tab="friends">
   <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Friends
+ </button>
+ <button data-tab="wallet">
+  <svg viewBox="0 0 24 24"><path d="M20 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h15v13H5a2 2 0 0 1-2-2V5"/><path d="M16 14h.01"/></svg>Wallet
  </button>
 </nav>
 
@@ -655,6 +739,7 @@ function openTab(tab){
  if (tab === "history") loadHistory();
  if (tab === "friends") loadReferrals();
  if (tab === "tasks") loadTasks();
+ if (tab === "wallet") loadWallet();
  haptic("light");
  window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
 }
@@ -911,7 +996,8 @@ async function loadHistory(){
   if (!transactions.length) { list.innerHTML = '<li class="empty">No transactions yet</li>'; return; }
   const names = {
    mining_reward: "⛏ Mining reward", referral_bonus: "👥 Referral bonus",
-   daily_bonus: "🔥 Daily bonus", task_reward: "🎯 Mission reward", upgrade: "Miner upgrade"
+   daily_bonus: "🔥 Daily bonus", task_reward: "🎯 Mission reward", upgrade: "Miner upgrade",
+   withdrawal: "⬆️ Withdrawal", withdrawal_refund: "↩️ Withdrawal refund"
   };
   for (const tx of transactions) {
    const li = document.createElement("li");
@@ -940,6 +1026,173 @@ async function loadReferrals(){
    list.appendChild(li);
   }
  } catch (e) { toast(e.message, true); }
+}
+
+// ---------------------------------------------------------------- wallet & withdrawals
+let wallet = null;          // last /api/withdrawals response
+let walletOffset = 0;       // server clock offset for the cooldown timer
+const STATUS = { pending: "Processing", paid: "Paid", rejected: "Declined" };
+
+function askConfirm(text){
+ return new Promise(res => {
+  if (inTelegram && tg.showConfirm) { try { tg.showConfirm(text, ok => res(!!ok)); return; } catch {} }
+  res(window.confirm(text));
+ });
+}
+
+async function loadWallet(){
+ try {
+  wallet = await api("/api/withdrawals");
+  walletOffset = wallet.now - Date.now() / 1000;
+  renderWallet();
+  if (wallet.is_admin) loadAdmin();
+ } catch (e) { toast(e.message, true); }
+}
+
+function walletAmount(){
+ const v = $("wAmount").value.trim().replace(",", ".");
+ return /^\d+(\.\d{0,6})?$/.test(v) ? Number(v) : NaN;
+}
+
+function renderWallet(){
+ if (!wallet) return;
+ const r = wallet.rules;
+ $("wBalance").textContent = fmt(wallet.balance, 2);
+ $("wTotal").textContent = fmt(wallet.total_withdrawn, 2);
+ $("wAddr").textContent = wallet.wallet;
+ $("rCool").textContent = r.cooldown_hours;
+ $("rMin").textContent = fmt(r.min, 0);
+ $("rFee").textContent = $("wFeeLbl").textContent = r.fee_percent;
+ $("wMinLbl").textContent = "Min. " + fmt(r.min, 0);
+ $("wAmount").placeholder = String(Number(r.min));
+
+ const list = $("wList");
+ list.innerHTML = "";
+ if (!wallet.withdrawals.length) list.innerHTML = '<li class="empty">No withdrawals yet</li>';
+ for (const w of wallet.withdrawals) {
+  const li = document.createElement("li");
+  li.innerHTML = `<div><div class="n"></div><div class="t"></div></div><div class="r"><div class="amt"></div><span class="badge"></span></div>`;
+  li.querySelector(".n").textContent = `${fmt(w.amount, 2)} VOLTIX`;
+  li.querySelector(".t").textContent = date(w.created_at);
+  li.querySelector(".amt").textContent = `+${fmt(w.net, 2)}`;
+  const b = li.querySelector(".badge");
+  b.textContent = STATUS[w.status] || w.status;
+  b.classList.add(w.status);
+  if (w.status === "paid" && w.tx_hash) {
+   const a = document.createElement("a");
+   a.href = "https://tonviewer.com/transaction/" + encodeURIComponent(w.tx_hash);
+   a.target = "_blank"; a.rel = "noopener"; a.textContent = " tx ↗";
+   b.after(a);
+  }
+  list.appendChild(li);
+ }
+ walletTick();
+}
+
+// Cooldown timer, "you receive" and the submit button state.
+function walletTick(){
+ if (!wallet || activeTab !== "wallet") return;
+ const r = wallet.rules;
+ const t = Date.now() / 1000 + walletOffset;
+ const wait = wallet.next_available_at ? wallet.next_available_at - t : 0;
+ const cool = $("wCool");
+ if (wallet.pending) {
+  cool.classList.remove("hidden");
+  $("wCoolTitle").textContent = "Your withdrawal is being processed";
+  $("wCoolTimer").textContent = "1–24 h";
+ } else if (wait > 0) {
+  cool.classList.remove("hidden");
+  $("wCoolTitle").textContent = "Next withdrawal available in";
+  $("wCoolTimer").textContent = hms(wait);
+ } else cool.classList.add("hidden");
+
+ const amt = walletAmount();
+ const ok = amt > 0;
+ $("wNet").textContent = `${fmt(ok ? amt * (1 - r.fee_percent / 100) : 0, 2)} VOLTIX`;
+
+ const btn = $("wSubmit");
+ if (btn.querySelector(".spinner")) return;
+ const bal = Number(wallet.balance), min = Number(r.min);
+ let label = "Withdraw", disabled = false;
+ if (wallet.pending) { label = "Request in progress"; disabled = true; }
+ else if (wait > 0) { label = "Available in " + hms(wait); disabled = true; }
+ else if (bal < min) { label = `Need ${fmt(min - bal, 2)} more VOLTIX`; disabled = true; }
+ else if (!ok) { label = "Enter amount"; disabled = true; }
+ else if (amt < min) { label = `Minimum ${fmt(min, 0)} VOLTIX`; disabled = true; }
+ else if (amt > bal) { label = "Not enough VOLTIX"; disabled = true; }
+ btn.textContent = label;
+ btn.disabled = disabled;
+}
+setInterval(walletTick, 1000);
+$("wAmount").addEventListener("input", walletTick);
+
+document.querySelectorAll(".chips button").forEach(b => b.addEventListener("click", () => {
+ if (!wallet) return;
+ const v = b.dataset.amt === "max" ? Math.floor(Number(wallet.balance) * 100) / 100 : Number(b.dataset.amt);
+ $("wAmount").value = String(v);
+ haptic("light");
+ walletTick();
+}));
+
+$("wCopy").addEventListener("click", async () => {
+ try { await navigator.clipboard.writeText($("wAddr").textContent); toast("Address copied"); }
+ catch { toast("Copy failed", true); }
+});
+
+$("wSubmit").addEventListener("click", async () => {
+ const btn = $("wSubmit");
+ const amt = walletAmount();
+ if (btn.disabled || !(amt > 0)) return;
+ const net = amt * (1 - wallet.rules.fee_percent / 100);
+ const yes = await askConfirm(`Withdraw ${fmt(amt, 2)} VOLTIX?\nYou receive ${fmt(net, 2)} VOLTIX after the ${wallet.rules.fee_percent}% fee.`);
+ if (!yes) return;
+ btn.disabled = true;
+ btn.innerHTML = '<span class="spinner"></span>Sending request';
+ try {
+  const r = await api("/api/withdraw", { method: "POST", body: { amount: $("wAmount").value.trim().replace(",", ".") } });
+  burst(btn, "#2EF2A3", 40);
+  applyUser(r.user);
+  $("wAmount").value = "";
+  toast("✅ Withdrawal requested — processing 1–24 h");
+ } catch (e) { toast(e.message, true); }
+ btn.textContent = "Withdraw";
+ await loadWallet();
+});
+
+async function loadAdmin(){
+ const box = $("adminList");
+ try {
+  const { pending } = await api("/api/admin/withdrawals");
+  $("adminCard").classList.remove("hidden");
+  box.innerHTML = "";
+  if (!pending.length) { box.innerHTML = '<div class="empty">No pending withdrawals</div>'; return; }
+  for (const w of pending) {
+   const row = document.createElement("div");
+   row.className = "adm-row";
+   row.innerHTML = `<div class="top-line"><span class="a"></span><span class="t" style="color:var(--muted);font-weight:500;font-size:12px"></span></div>
+    <div class="w"></div>
+    <div class="acts"><input placeholder="tx hash (optional)"><button class="pill">Paid</button><button class="pill red">Reject</button></div>`;
+   row.querySelector(".a").textContent = `Send ${fmt(w.net, 2)} VOLTIX`;
+   row.querySelector(".t").textContent = `#${w.id} · ${date(w.created_at)}`;
+   row.querySelector(".w").textContent = w.wallet;
+   row.querySelector(".w").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(w.wallet); toast("Address copied"); } catch {}
+   });
+   const [paidBtn, rejBtn] = row.querySelectorAll("button");
+   const input = row.querySelector("input");
+   const act = (btn, action, question) => async () => {
+    if (!(await askConfirm(question))) return;
+    withButton(btn, async () => {
+     const r = await api("/api/admin/withdrawals/process", { method: "POST", body: { id: w.id, action, tx_hash: input.value.trim() || undefined } });
+     toast(r.message);
+     loadWallet();
+    });
+   };
+   paidBtn.addEventListener("click", act(paidBtn, "paid", `Mark #${w.id} as paid (${fmt(w.net, 2)} VOLTIX sent)?`));
+   rejBtn.addEventListener("click", act(rejBtn, "reject", `Reject #${w.id} and refund ${fmt(w.amount, 2)} VOLTIX?`));
+   box.appendChild(row);
+  }
+ } catch (e) { $("adminCard").classList.add("hidden"); }
 }
 
 async function refreshMe(){
