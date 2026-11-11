@@ -6,7 +6,8 @@
   "dependencies": {
     "@ton/crypto": "3.3.0",
     "@ton/ton": "15.1.0",
-    "zod": "3.25.76"
+    "zod": "3.25.76",
+    "buffer": "6.0.3"
   },
   "devDependencies": {
     "esbuild": "0.25.0"
