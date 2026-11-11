@@ -89,7 +89,10 @@ All responses are JSON `{ success, ... }`. Authenticated routes need `Authorizat
 | GET  | `/api/me` | ✓ | profile, balance, mining state, referral stats |
 | POST | `/api/mining/start` | ✓ | switch the miner on (new accounts start automatically; it never stops) |
 | POST | `/api/mining/claim` | ✓ | collect everything mined so far, min 0.1 (+10% to the referrer) |
-| POST | `/api/upgrade` | ✓ | buy next miner level (10 levels, 100 → 520 VOLTIX per session) |
+| POST | `/api/holding/refresh` | ✓ | re-read the VTX held in the wallet now; level 1–10 (100 → 520 VOLTIX/day) depends on it |
+| GET  | `/api/withdrawals` | ✓ | wallet tab: rules, cooldown, history, VTX token info |
+| POST | `/api/withdraw` | ✓ | `{ amount }` request a payout (min 10,000, 5% fee, 1 per 48 h) |
+| GET/POST | `/api/admin/withdrawals[/process]` | admin | pending payouts; mark paid / reject (refund) |
 | POST | `/api/checkin` | ✓ | daily bonus: 10 VOLTIX × streak day (max 70) |
 | GET  | `/api/tasks` | ✓ | one-time tasks with progress |
 | POST | `/api/tasks/claim` | ✓ | `{ task_id }` claim a completed task |

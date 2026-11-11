@@ -233,6 +233,29 @@ button:disabled{cursor:default}
 .stat .v{font-family:var(--display);font-size:16px;font-weight:800;margin-top:6px;overflow-wrap:anywhere}
 .stat .label{font-size:9.5px;letter-spacing:1.5px}
 
+/* level */
+.lv-head{display:flex;align-items:center;gap:14px}
+.lv-badge{width:58px;height:58px;border-radius:18px;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
+ background:conic-gradient(from 210deg,var(--cyan),var(--violet),var(--pink),var(--cyan));padding:2px;position:relative;box-shadow:0 0 24px -4px rgba(139,92,255,.7)}
+.lv-badge::before{content:"";position:absolute;inset:2px;border-radius:16px;background:#0a0f26}
+.lv-badge span,.lv-badge small{position:relative;font-family:var(--display)}
+.lv-badge span{font-size:24px;font-weight:900;line-height:1;background:linear-gradient(180deg,#fff,var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lv-badge small{font-size:9px;letter-spacing:2px;color:var(--muted);margin-top:3px}
+.lv-head .txt{flex:1;min-width:0}
+.lv-head .ttl{font-weight:800;font-size:15px}
+.lv-head .sm{color:var(--ok);font-size:13px;margin-top:3px;font-weight:700;font-variant-numeric:tabular-nums}
+.lv-refresh{width:40px;height:40px;border-radius:12px;border:1px solid var(--edge);background:rgba(255,255,255,.05);font-size:18px;flex:none}
+.lv-hold{display:flex;justify-content:space-between;align-items:baseline;margin-top:16px;font-size:13px;color:var(--muted)}
+.lv-hold b{font-family:var(--display);color:var(--text);font-size:15px}
+.lv-next{color:var(--muted);font-size:12px;margin-top:8px}
+.lv-next b{color:var(--cyan)}
+.lv-table{margin-top:10px;border-radius:14px;overflow:hidden;border:1px solid rgba(255,255,255,.06)}
+.lv-row{display:grid;grid-template-columns:52px 1fr auto;gap:8px;padding:9px 12px;font-size:12px;border-bottom:1px solid rgba(255,255,255,.05);font-variant-numeric:tabular-nums}
+.lv-row:last-child{border-bottom:0}
+.lv-row.cur{background:linear-gradient(90deg,rgba(0,229,255,.16),rgba(139,92,255,.1));font-weight:800}
+.lv-row .l{font-family:var(--display);color:var(--cyan);font-weight:800}
+.lv-row .r{color:var(--ok);font-weight:700}
+
 /* daily */
 .daily .head{display:flex;align-items:center;gap:12px}
 .daily .flame{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;font-size:22px;flex:none;background:linear-gradient(145deg,rgba(255,138,28,.25),rgba(255,61,203,.15));border:1px solid rgba(255,138,28,.35)}
@@ -452,6 +475,23 @@ button:disabled{cursor:default}
      <div class="stat"><div class="label">Per hour</div><div class="v" id="sHour">0</div></div>
      <div class="stat"><div class="label">Friends</div><div class="v" id="sFriends">+10%</div></div>
     </div>
+   </div>
+
+   <div class="glass card">
+    <div class="lv-head">
+     <div class="lv-badge"><span id="lvNum">1</span><small>LVL</small></div>
+     <div class="txt">
+      <div class="ttl">Miner level <span id="lvOf">1 / 10</span></div>
+      <div class="sm" id="lvRate">4.17 VOLTIX / hour</div>
+     </div>
+     <button class="lv-refresh" id="lvRefresh" title="Refresh VTX balance" aria-label="Refresh VTX balance">↻</button>
+    </div>
+    <div class="lv-hold"><span>VTX in your wallet</span><b id="lvHeld">0</b></div>
+    <div class="bar"><i id="lvBar"></i></div>
+    <div class="lv-next" id="lvNext"></div>
+    <button class="link" id="lvToggle" style="margin-top:8px">All levels ▾</button>
+    <div class="lv-table hidden" id="lvTable"></div>
+    <p class="hint">Your level depends on how many VTX you hold in your connected wallet. Hold more — mine faster. Move or sell them and the level drops.</p>
    </div>
 
    <div class="glass card daily">
@@ -810,8 +850,53 @@ function render(){
  $("sFriends").textContent = `+${me.config.referral_percent}%`;
  renderReferralInfo();
  renderCheckin();
+ renderLevel();
  tick();
 }
+
+function renderLevel(){
+ const m = me.miner;
+ if (!m || !m.levels) return;
+ const cur = m.levels[m.level - 1];
+ $("lvNum").textContent = m.level;
+ $("lvOf").textContent = `${m.level} / ${m.max_level}`;
+ $("lvRate").textContent = `${fmt(Number(cur.reward) / 24, 2)} VOLTIX / hour`;
+ const held = Number(m.held);
+ $("lvHeld").textContent = `${fmt(held, held < 1000 ? 2 : 0)} VTX`;
+ if (m.next) {
+  const from = Number(cur.hold), to = Number(m.next.hold);
+  $("lvBar").style.width = Math.max(2, Math.min(100, (held - from) / (to - from) * 100)) + "%";
+  $("lvNext").innerHTML = `Hold <b>${fmt(to, 0)} VTX</b> → level ${m.next.level} · <b>${fmt(Number(m.next.reward) / 24, 2)}/h</b> (${fmt(Math.max(0, to - held), 0)} more)`;
+ } else {
+  $("lvBar").style.width = "100%";
+  $("lvNext").innerHTML = "<b>Max level reached</b> — top mining speed";
+ }
+ const table = $("lvTable");
+ table.innerHTML = "";
+ for (const l of m.levels) {
+  const row = document.createElement("div");
+  row.className = "lv-row" + (l.level === m.level ? " cur" : "");
+  row.innerHTML = `<span class="l"></span><span></span><span class="r"></span>`;
+  row.children[0].textContent = "LV " + l.level;
+  row.children[1].textContent = Number(l.hold) ? `≥ ${fmt(l.hold, 0)} VTX` : "Start";
+  row.children[2].textContent = `${fmt(Number(l.reward) / 24, 2)}/h`;
+  table.appendChild(row);
+ }
+}
+
+$("lvToggle").addEventListener("click", () => {
+ const t = $("lvTable");
+ t.classList.toggle("hidden");
+ $("lvToggle").textContent = t.classList.contains("hidden") ? "All levels ▾" : "Hide levels ▴";
+});
+
+$("lvRefresh").addEventListener("click", e => withButton(e.currentTarget, async () => {
+ const before = me.miner.level;
+ const r = await api("/api/holding/refresh", { method: "POST" });
+ applyUser(r.user);
+ if (r.user.miner.level > before) { burst($("lvNum"), "#8B5CFF", 40); toast("🚀 " + r.message); }
+ else toast(`VTX balance updated · level ${r.user.miner.level}`);
+}));
 
 function renderCheckin(){
  const c = me.checkin;
@@ -849,7 +934,8 @@ function tick(){
 
  if (st === "mining") {
   const elapsed = Math.max(0, serverNow() - m.since);
-  mined = perDay() * elapsed / 86400;
+  // Server's figure at m.now (includes VOLTIX banked at an earlier level) + live growth since.
+  mined = Number(m.mined || 0) + perDay() * Math.max(0, serverNow() - m.now) / 86400;
   // Ring = one revolution per hour: the reactor visibly keeps turning.
   progress = (elapsed % 3600) / 3600;
   timer = "⏱ " + hms(elapsed);

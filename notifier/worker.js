@@ -54,7 +54,7 @@ const DAY = 86400;
 export async function notifyFinished(env) {
   const t = now();
   const { results } = await env.DB.prepare(`
-    SELECT id, telegram_id, mining_since, miner_level, reminded_at
+    SELECT id, telegram_id, mining_since, miner_level, reminded_at, mining_bank_micro
     FROM users
     WHERE telegram_id IS NOT NULL AND mining_since IS NOT NULL
       AND mining_since <= ? AND (reminded_at IS NULL OR reminded_at <= ?)
@@ -70,7 +70,7 @@ export async function notifyFinished(env) {
     if (!mark.meta.changes) continue;
 
     const perDay = DAILY_BY_LEVEL[Math.min(Math.max(row.miner_level || 1, 1), DAILY_BY_LEVEL.length) - 1];
-    const mined = Math.floor((t - row.mining_since) * perDay / DAY);
+    const mined = Math.floor((row.mining_bank_micro || 0) / 1_000_000 + (t - row.mining_since) * perDay / DAY);
     const res = await tg(env, "sendMessage", {
       chat_id: row.telegram_id,
       text: `⛏ <b>Your miner has collected ${mined.toLocaleString("en-US")} VOLTIX!</b>\n\nIt keeps working 24/7 — come grab your coins.`,

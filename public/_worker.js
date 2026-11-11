@@ -19,20 +19,23 @@ const REFERRAL_PERCENT = 10;                // referrer gets 10% of every claim
 const V = n => Math.round(n * TOKEN_DECIMALS); // VOLTIX -> micro units
 const MIN_CLAIM = V(0.1);                   // smallest claim (~1.5 minutes of mining)
 
-// Miner upgrades: VOLTIX mined per day and the price of reaching the level.
+// Miner level = how many VTX the user holds in their connected TON wallet (on-chain).
+// hold: VTX needed, reward: VOLTIX mined per day at that level.
 const MINER_LEVELS = [
-  { reward: 100, cost: 0 },
-  { reward: 120, cost: 200 },
-  { reward: 145, cost: 500 },
-  { reward: 175, cost: 1_000 },
-  { reward: 210, cost: 2_000 },
-  { reward: 250, cost: 4_000 },
-  { reward: 300, cost: 8_000 },
-  { reward: 360, cost: 15_000 },
-  { reward: 430, cost: 30_000 },
-  { reward: 520, cost: 60_000 }
+  { hold: 0, reward: 100 },
+  { hold: 1_000, reward: 120 },
+  { hold: 5_000, reward: 145 },
+  { hold: 10_000, reward: 175 },
+  { hold: 25_000, reward: 210 },
+  { hold: 50_000, reward: 250 },
+  { hold: 100_000, reward: 300 },
+  { hold: 250_000, reward: 360 },
+  { hold: 500_000, reward: 430 },
+  { hold: 1_000_000, reward: 520 }
 ];
 const levelInfo = lvl => MINER_LEVELS[Math.min(Math.max(lvl || 1, 1), MINER_LEVELS.length) - 1];
+const HOLD_CHECK_TTL = 5 * 60;              // re-read the wallet balance at most every 5 min
+const HOLD_REFRESH_MIN = 20;                // manual "refresh" button cooldown, seconds
 
 // Daily check-in: 10 VOLTIX × streak day, capped at day 7.
 const DAILY_BONUS = 10;
@@ -473,11 +476,66 @@ async function authUser(request, db) {
   return { user, tokenHash };
 }
 
-// VOLTIX (micro) mined since the last claim.
+// VOLTIX (micro) mined since the last claim: the banked part (mined before the last
+// level-up) plus the current stretch at the current level's rate.
 function accrued(user, t = now()) {
   if (!user.mining_since) return 0;
   const perDay = V(levelInfo(user.miner_level).reward);
-  return Math.floor(Math.max(t - user.mining_since, 0) * perDay / MINING_DURATION);
+  return (user.mining_bank_micro || 0) +
+    Math.floor(Math.max(t - user.mining_since, 0) * perDay / MINING_DURATION);
+}
+
+// ---------------------------------------------------------------- VTX holdings → level
+
+function levelForHolding(units) {               // units: BigInt, 6 decimals
+  let level = 1;
+  MINER_LEVELS.forEach((l, i) => { if (units >= BigInt(V(l.hold))) level = i + 1; });
+  return level;
+}
+
+// VTX balance (base units, BigInt) of a wallet, or null if the lookup failed.
+async function fetchVtxBalance(env, rawAddress) {
+  const owner = friendlyAddress(rawAddress);
+  const url = "https://toncenter.com/api/v3/jetton/wallets?limit=1" +
+    `&owner_address=${encodeURIComponent(owner)}&jetton_address=${encodeURIComponent(TOKEN.master)}`;
+  try {
+    const res = await fetch(url, { headers: env.TONCENTER_API_KEY ? { "X-API-Key": env.TONCENTER_API_KEY } : {} });
+    if (!res.ok) { console.warn("toncenter", res.status); return null; }
+    const data = await res.json();
+    const w = data.jetton_wallets && data.jetton_wallets[0];
+    return w && /^\d+$/.test(String(w.balance)) ? BigInt(w.balance) : 0n;
+  } catch (e) {
+    console.warn("toncenter failed", e.message);
+    return null;
+  }
+}
+
+// Re-reads the user's VTX balance and moves their level up or down.
+// Level-up: what was mined so far is banked at the old rate, the new rate starts now.
+// Level-down: applies to the whole unclaimed stretch (you must keep holding to keep the rate).
+async function syncHolding(env, db, user, { force = false } = {}) {
+  const t = now();
+  const age = t - (user.held_checked_at || 0);
+  if (age < (force ? HOLD_REFRESH_MIN : HOLD_CHECK_TTL)) return user;
+
+  const units = await fetchVtxBalance(env, user.wallet_address);
+  if (units === null) return user;              // API down: keep the current level
+  const held = units > BigInt(Number.MAX_SAFE_INTEGER) ? Number.MAX_SAFE_INTEGER : Number(units);
+  const oldLevel = user.miner_level || 1;
+  const newLevel = levelForHolding(units);
+
+  if (newLevel > oldLevel && user.mining_since) {
+    const bank = accrued(user, t);
+    await db.prepare(`
+      UPDATE users SET mining_bank_micro = ?, mining_since = ?, miner_level = ?, held_micro = ?, held_checked_at = ?
+      WHERE id = ? AND mining_since = ? AND COALESCE(mining_bank_micro, 0) = ?
+    `).bind(bank, t, newLevel, held, t, user.id, user.mining_since, user.mining_bank_micro || 0).run();
+  } else {
+    await db.prepare(
+      "UPDATE users SET miner_level = ?, held_micro = ?, held_checked_at = ? WHERE id = ?"
+    ).bind(newLevel, held, t, user.id).run();
+  }
+  return db.prepare("SELECT * FROM users WHERE id = ?").bind(user.id).first();
 }
 
 function miningView(user, t = now()) {
@@ -524,11 +582,16 @@ async function profile(db, user) {
       level,
       max_level: MINER_LEVELS.length,
       reward: formatBalance(V(levelInfo(level).reward)),
+      held: formatBalance(user.held_micro || 0),        // VTX in the connected wallet
+      held_checked_at: user.held_checked_at || null,
       next: next && {
         level: level + 1,
-        reward: formatBalance(V(next.reward)),
-        cost: formatBalance(V(next.cost))
-      }
+        hold: formatBalance(V(next.hold)),
+        reward: formatBalance(V(next.reward))
+      },
+      levels: MINER_LEVELS.map((l, i) => ({
+        level: i + 1, hold: formatBalance(V(l.hold)), reward: formatBalance(V(l.reward))
+      }))
     },
     checkin: {
       available: !(user.last_checkin_day >= today),
@@ -683,9 +746,20 @@ const routes = {
     return { message: "Logged out" };
   },
 
-  "GET /api/me": async ({ request, db }) => {
+  "GET /api/me": async ({ request, env, db }) => {
     const { user } = await authUser(request, db);
-    return { user: await profile(db, user) };
+    return { user: await profile(db, await syncHolding(env, db, user)) };
+  },
+
+  // "Refresh" after buying / receiving VTX: re-reads the wallet now (20 s cooldown).
+  "POST /api/holding/refresh": async ({ request, env, db }) => {
+    const { user } = await authUser(request, db);
+    const fresh = await syncHolding(env, db, user, { force: true });
+    const lvl = fresh.miner_level || 1;
+    return {
+      message: lvl > (user.miner_level || 1) ? `Level up! You are now level ${lvl}` : `Level ${lvl}`,
+      user: await profile(db, fresh)
+    };
   },
 
   // Switches the miner on (once — it then runs forever).
@@ -703,8 +777,10 @@ const routes = {
   },
 
   // Moves everything mined so far to the balance; mining keeps running.
-  "POST /api/mining/claim": async ({ request, db }) => {
-    const { user } = await authUser(request, db);
+  "POST /api/mining/claim": async ({ request, env, db }) => {
+    const auth = await authUser(request, db);
+    // Re-check holdings right before paying out: the rate needs the VTX to still be there.
+    const user = await syncHolding(env, db, auth.user, { force: true });
     const t = now();
     if (!user.mining_since) throw new HttpError("Mining is not started", 409);
 
@@ -713,11 +789,11 @@ const routes = {
       throw new HttpError(`Nothing to claim yet (minimum ${formatBalance(MIN_CLAIM)} VOLTIX)`, 409);
     }
 
-    // Atomic guard: only the request that still sees the old mining_since wins.
+    // Atomic guard: only the request that still sees the old mining_since / bank wins.
     const claimed = await db.prepare(`
-      UPDATE users SET mining_since = ?, balance_micro = balance_micro + ?, reminded_at = NULL
-      WHERE id = ? AND mining_since = ?
-    `).bind(t, reward, user.id, user.mining_since).run();
+      UPDATE users SET mining_since = ?, mining_bank_micro = 0, balance_micro = balance_micro + ?, reminded_at = NULL
+      WHERE id = ? AND mining_since = ? AND COALESCE(mining_bank_micro, 0) = ?
+    `).bind(t, reward, user.id, user.mining_since, user.mining_bank_micro || 0).run();
     if (!claimed.meta.changes) throw new HttpError("Reward already claimed", 409);
 
     const statements = [
@@ -913,27 +989,6 @@ const routes = {
         `✅ <b>Withdrawal sent!</b>\n\n${Number(formatBalance(w.net_micro)).toLocaleString("en-US")} VOLTIX are on the way to your wallet.`);
     }
     return { message: status === "paid" ? "Marked as paid" : "Rejected and refunded", withdrawal: withdrawalView(w) };
-  },
-
-  "POST /api/upgrade": async ({ request, db }) => {
-    const { user } = await authUser(request, db);
-    const level = user.miner_level || 1;
-    if (level >= MINER_LEVELS.length) throw new HttpError("Miner is already at max level", 409);
-    const cost = V(MINER_LEVELS[level].cost);
-    const t = now();
-
-    // Atomic: only succeeds if the level is unchanged and the balance covers the price.
-    const done = await db.prepare(`
-      UPDATE users SET balance_micro = balance_micro - ?, miner_level = ?
-      WHERE id = ? AND COALESCE(miner_level, 1) = ? AND balance_micro >= ?
-    `).bind(cost, level + 1, user.id, level, cost).run();
-    if (!done.meta.changes) throw new HttpError("Not enough VOLTIX", 409);
-
-    await db.prepare(
-      "INSERT INTO transactions (user_id, amount_micro, type, created_at) VALUES (?, ?, 'upgrade', ?)"
-    ).bind(user.id, -cost, t).run();
-
-    return { message: `Miner upgraded to level ${level + 1}`, user: await freshProfile(db, user.id) };
   },
 
   "POST /api/checkin": async ({ request, db }) => {
