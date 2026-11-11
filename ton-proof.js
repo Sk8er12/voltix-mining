@@ -51,8 +51,8 @@ export async function verifyTonProof({ address, network, public_key, proof, expe
       if (!publicKey.equals(Buffer.from(public_key, "hex"))) return false;
     }
 
-    const signature = Buffer.from(proof.signature, "base64");
-    if (signature.length !== 64) return false;
+    const signatureBytes = Buffer.from(proof.signature, "base64");
+    if (signatureBytes.length !== 64 || signatureBytes.toString("base64") !== proof.signature) return false;
 
     const workchain = Buffer.alloc(4);
     workchain.writeInt32BE(wantedAddress.workChain, 0);
@@ -80,7 +80,7 @@ export async function verifyTonProof({ address, network, public_key, proof, expe
 
     return domainSignVerify({
       data: digest,
-      signature,
+      signature: proof.signature,
       publicKey,
       domain: signatureDomain(String(network))
     });
