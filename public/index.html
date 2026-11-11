@@ -460,11 +460,18 @@ async function preparePayload(){
 
 async function login(wallet){
  const item = wallet.connectItems && wallet.connectItems.tonProof;
- if (!item || !("proof" in item)) {
+ if (!item) {
+  // Old wallet connection restored without our session: start over quietly.
+  await tonUI.disconnect();
+  return;
+ }
+ if (!("proof" in item)) {
   toast("Wallet did not sign the login request. Please connect again.", true);
   await tonUI.disconnect();
   return;
  }
+ $("connect").disabled = true;
+ $("connect").innerHTML = '<span class="spinner"></span>Signing in…';
  try {
   const r = await api("/api/auth/verify", {
    method: "POST",
@@ -483,8 +490,11 @@ async function login(wallet){
   showDashboard();
   toast("Wallet connected");
  } catch (e) {
-  toast(e.message, true);
+  toast("Login failed: " + e.message, true);
   await tonUI.disconnect();
+ } finally {
+  $("connect").disabled = false;
+  $("connect").textContent = "Connect TON Wallet";
  }
 }
 
@@ -514,16 +524,11 @@ async function init(){
   ...(TELEGRAM_APP_URL ? { twaReturnUrl: TELEGRAM_APP_URL } : {})
  };
 
- const loggedIn = await refreshMe();
- await tonUI.connectionRestored;
-
- if (!loggedIn) {
-  // A wallet connection without our session can't be used — start clean.
-  if (tonUI.connected) await tonUI.disconnect();
-  await preparePayload();
- }
-
+ // Subscribe right away: after returning from the wallet app the signed
+ // proof can arrive before anything else here has finished.
+ const sessionChecked = refreshMe();
  tonUI.onStatusChange(async wallet => {
+  await sessionChecked;
   if (wallet) {
    if (!token) await login(wallet);
   } else {
@@ -532,7 +537,15 @@ async function init(){
   }
  });
 
- $("connect").addEventListener("click", () => tonUI.openModal());
+ const loggedIn = await sessionChecked;
+ await tonUI.connectionRestored;
+ if (!loggedIn && !tonUI.connected) await preparePayload();
+
+ $("connect").addEventListener("click", async () => {
+  // A stale wallet connection would make the modal do nothing.
+  if (tonUI.connected && !token) await tonUI.disconnect();
+  tonUI.openModal();
+ });
 }
 
 init().catch(e => {

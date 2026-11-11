@@ -584,7 +584,10 @@ export default {
       const data = await handler({ request, env, db: env.DB, url });
       return json({ success: true, ...data });
     } catch (err) {
-      if (err instanceof HttpError) return json({ success: false, error: err.message }, err.status);
+      if (err instanceof HttpError) {
+        if (url.pathname.startsWith("/api/auth/")) console.warn(`${url.pathname}: ${err.message}`);
+        return json({ success: false, error: err.message }, err.status);
+      }
       console.error(err);
       return json({ success: false, error: "Internal server error" }, 500);
     }
