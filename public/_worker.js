@@ -9,14 +9,17 @@
 //                      (default: the host of the incoming request)
 //   ALLOW_TESTNET    — "true" to accept testnet wallets
 
-const VERSION = "3.2.0";
+const VERSION = "4.0.0";
 
-const MINING_DURATION = 24 * 60 * 60;       // seconds
+// Mining is continuous (24/7): once started it never stops, VOLTIX accrue every
+// second at the level's daily rate and can be claimed at any time.
+const MINING_DURATION = 24 * 60 * 60;       // the rate is "reward per this many seconds"
 const TOKEN_DECIMALS = 1_000_000;
 const REFERRAL_PERCENT = 10;                // referrer gets 10% of every claim
-const V = n => n * TOKEN_DECIMALS;          // VOLTIX -> micro units
+const V = n => Math.round(n * TOKEN_DECIMALS); // VOLTIX -> micro units
+const MIN_CLAIM = V(0.1);                   // smallest claim (~1.5 minutes of mining)
 
-// Miner upgrades: reward per mining session and the price of reaching the level.
+// Miner upgrades: VOLTIX mined per day and the price of reaching the level.
 const MINER_LEVELS = [
   { reward: 100, cost: 0 },
   { reward: 120, cost: 200 },
@@ -424,7 +427,7 @@ async function handleTelegramUpdate(update, env) {
       "⚡ <b>Welcome to VOLTIX Mining!</b>\n\n" +
       "Connect your TON wallet, start the miner and claim VOLTIX every 24 hours.\n" +
       "Upgrade your miner, complete tasks and invite friends for +10%.\n\n" +
-      "I'll message you here when your mining is ready to claim.",
+      "Your miner works 24/7 — I'll remind you here to collect your VOLTIX.",
     parse_mode: "HTML",
     reply_markup: { inline_keyboard: [[{ text: "⛏ Open VOLTIX", web_app: { url } }]] }
   });
@@ -454,31 +457,32 @@ async function authUser(request, db) {
   return { user, tokenHash };
 }
 
-async function activeSession(db, userId) {
-  return db.prepare(`
-    SELECT * FROM mining_sessions
-    WHERE user_id = ? AND claimed_at IS NULL
-    ORDER BY id DESC LIMIT 1
-  `).bind(userId).first();
+// VOLTIX (micro) mined since the last claim.
+function accrued(user, t = now()) {
+  if (!user.mining_since) return 0;
+  const perDay = V(levelInfo(user.miner_level).reward);
+  return Math.floor(Math.max(t - user.mining_since, 0) * perDay / MINING_DURATION);
 }
 
-function miningView(session, t = now()) {
-  if (!session) return { state: "idle", now: t };
-  const total = session.ends_at - session.started_at;
-  const done = Math.min(Math.max(t - session.started_at, 0), total);
+function miningView(user, t = now()) {
+  const perDay = V(levelInfo(user.miner_level).reward);
+  if (!user.mining_since) {
+    return { state: "idle", now: t, per_day: formatBalance(perDay), min_claim: formatBalance(MIN_CLAIM) };
+  }
+  const mined = accrued(user, t);
   return {
-    state: session.ends_at <= t ? "ready" : "mining",
-    started_at: session.started_at,
-    ends_at: session.ends_at,
+    state: "mining",
+    since: user.mining_since,
     now: t,
-    reward: formatBalance(session.reward_micro),
-    mined: formatBalance(Math.floor(session.reward_micro * done / total))
+    per_day: formatBalance(perDay),
+    mined: formatBalance(mined),
+    claimable: mined >= MIN_CLAIM,
+    min_claim: formatBalance(MIN_CLAIM)
   };
 }
 
 async function profile(db, user) {
-  const [session, refs, refEarned] = await Promise.all([
-    activeSession(db, user.id),
+  const [refs, refEarned] = await Promise.all([
     db.prepare("SELECT COUNT(*) AS total FROM referrals WHERE referrer_id = ?").bind(user.id).first(),
     db.prepare(
       "SELECT COALESCE(SUM(amount_micro), 0) AS total FROM transactions WHERE user_id = ? AND type = 'referral_bonus'"
@@ -499,7 +503,7 @@ async function profile(db, user) {
     referrals: refs.total,
     referral_earned: formatBalance(refEarned.total),
     telegram_linked: !!user.telegram_id,
-    mining: miningView(session),
+    mining: miningView(user),
     miner: {
       level,
       max_level: MINER_LEVELS.length,
@@ -583,8 +587,9 @@ const routes = {
     const t = now();
 
     const inserted = await db.prepare(
-      "INSERT OR IGNORE INTO users (wallet_address, balance_micro, created_at) VALUES (?, 0, ?)"
-    ).bind(raw, t).run();
+      // New accounts start mining right away.
+      "INSERT OR IGNORE INTO users (wallet_address, balance_micro, created_at, mining_since) VALUES (?, 0, ?, ?)"
+    ).bind(raw, t, t).run();
     const user = await db.prepare("SELECT * FROM users WHERE wallet_address = ?").bind(raw).first();
 
     // Referral is only attached when the account is brand new.
@@ -621,41 +626,39 @@ const routes = {
     return { user: await profile(db, user) };
   },
 
+  // Switches the miner on (once — it then runs forever).
   "POST /api/mining/start": async ({ request, db }) => {
     const { user } = await authUser(request, db);
     const t = now();
-    const active = await activeSession(db, user.id);
-
-    if (active && active.ends_at > t) {
-      return { message: "Mining already active", mining: miningView(active, t) };
-    }
-    if (active) throw new HttpError("Please claim your previous mining reward", 409);
-
-    await db.prepare(
-      "INSERT INTO mining_sessions (user_id, started_at, ends_at, reward_micro) VALUES (?, ?, ?, ?)"
-    ).bind(user.id, t, t + MINING_DURATION, V(levelInfo(user.miner_level).reward)).run();
-
-    return { message: "Mining started", mining: miningView(await activeSession(db, user.id), t) };
+    const started = await db.prepare(
+      "UPDATE users SET mining_since = ? WHERE id = ? AND mining_since IS NULL"
+    ).bind(t, user.id).run();
+    const fresh = await db.prepare("SELECT * FROM users WHERE id = ?").bind(user.id).first();
+    return {
+      message: started.meta.changes ? "Mining started" : "Mining already active",
+      mining: miningView(fresh, t)
+    };
   },
 
+  // Moves everything mined so far to the balance; mining keeps running.
   "POST /api/mining/claim": async ({ request, db }) => {
     const { user } = await authUser(request, db);
     const t = now();
-    const session = await activeSession(db, user.id);
+    if (!user.mining_since) throw new HttpError("Mining is not started", 409);
 
-    if (!session) throw new HttpError("No reward available", 409);
-    if (session.ends_at > t) throw new HttpError("Mining is not finished", 409);
+    const reward = accrued(user, t);
+    if (reward < MIN_CLAIM) {
+      throw new HttpError(`Nothing to claim yet (minimum ${formatBalance(MIN_CLAIM)} VOLTIX)`, 409);
+    }
 
-    // Atomic guard: only one request can flip claimed_at.
+    // Atomic guard: only the request that still sees the old mining_since wins.
     const claimed = await db.prepare(`
-      UPDATE mining_sessions SET claimed_at = ?
-      WHERE id = ? AND user_id = ? AND claimed_at IS NULL AND ends_at <= ?
-    `).bind(t, session.id, user.id, t).run();
+      UPDATE users SET mining_since = ?, balance_micro = balance_micro + ?, reminded_at = NULL
+      WHERE id = ? AND mining_since = ?
+    `).bind(t, reward, user.id, user.mining_since).run();
     if (!claimed.meta.changes) throw new HttpError("Reward already claimed", 409);
 
-    const reward = session.reward_micro;
     const statements = [
-      db.prepare("UPDATE users SET balance_micro = balance_micro + ? WHERE id = ?").bind(reward, user.id),
       db.prepare(
         "INSERT INTO transactions (user_id, amount_micro, type, created_at) VALUES (?, ?, 'mining_reward', ?)"
       ).bind(user.id, reward, t)

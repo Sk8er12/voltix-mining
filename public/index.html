@@ -329,9 +329,9 @@ button:disabled{cursor:default}
   <div class="brand grad-text">VOLTIX</div>
   <div class="tagline">MINING ON TON</div>
   <div class="headline">Your wallet is a <em>power plant</em>.<br>Start it up.</div>
-  <p class="desc">Mine VOLTIX every 24 hours, keep your streak alive and grow your network of miners.</p>
+  <p class="desc">Your miner runs 24/7 — VOLTIX drip in every second. Collect any time, keep your streak and grow your team.</p>
   <div class="feats">
-   <div class="feat glass"><div class="ic">⚡</div><div class="v">24H</div><div class="t">mining cycles</div></div>
+   <div class="feat glass"><div class="ic">⚡</div><div class="v">24/7</div><div class="t">non-stop mining</div></div>
    <div class="feat glass"><div class="ic">👥</div><div class="v">+10%</div><div class="t">from every friend</div></div>
    <div class="feat glass"><div class="ic">🔥</div><div class="v">×7</div><div class="t">daily streak</div></div>
   </div>
@@ -399,7 +399,7 @@ button:disabled{cursor:default}
     <div class="state" id="state"></div>
     <button class="cta" id="mineBtn">Start Mining</button>
     <div class="stats">
-     <div class="stat"><div class="label">Per cycle</div><div class="v" id="sReward">0</div></div>
+     <div class="stat"><div class="label">Per day</div><div class="v" id="sReward">0</div></div>
      <div class="stat"><div class="label">Per hour</div><div class="v" id="sHour">0</div></div>
      <div class="stat"><div class="label">Friends</div><div class="v" id="sFriends">+10%</div></div>
     </div>
@@ -692,15 +692,15 @@ const RING_LEN = 2 * Math.PI * 96;
 $("ringFg").style.strokeDasharray = RING_LEN;
 $("ringFg").style.strokeDashoffset = RING_LEN;
 
-const cycleReward = () => Number((me.miner && me.miner.reward) || me.config.reward);
+const perDay = () => Number(me.mining.per_day || (me.miner && me.miner.reward) || me.config.reward);
 
 function render(){
  if (!me) return;
  $("addr").textContent = short(me.wallet_friendly);
  setBalance(me.balance);
- const reward = cycleReward(), hours = me.config.duration / 3600;
- $("sReward").textContent = fmt(reward, 0);
- $("sHour").textContent = fmt(reward / hours, 2);
+ const day = perDay();
+ $("sReward").textContent = fmt(day, 0);
+ $("sHour").textContent = fmt(day / 24, 2);
  $("sFriends").textContent = `+${me.config.referral_percent}%`;
  renderReferralInfo();
  renderCheckin();
@@ -732,35 +732,31 @@ function renderCheckin(){
  }
 }
 
+// Mining runs 24/7: the counter grows every second since the last claim.
 function tick(){
  if (!me) return;
  const m = me.mining;
  const btn = $("mineBtn");
- let progress = 0, mined = 0, timer = "--:--:--", state = "", live = "";
- let st = m.state;
+ let progress = 0, mined = 0, timer = "OFFLINE", state = "", live = "";
+ const st = m.state;
+ const minClaim = Number(m.min_claim || 0.1);
 
  if (st === "mining") {
-  const t = serverNow();
-  const total = m.ends_at - m.started_at;
-  progress = Math.min(1, Math.max(0, (t - m.started_at) / total));
-  mined = Number(m.reward) * progress;
-  timer = hms(m.ends_at - t);
-  if (progress >= 1) st = "ready";
-  state = '<span class="on">MINING ACTIVE</span>';
-  live = `<b>+${mined.toFixed(4)}</b> mining now`;
+  const elapsed = Math.max(0, serverNow() - m.since);
+  mined = perDay() * elapsed / 86400;
+  // Ring = one revolution per hour: the reactor visibly keeps turning.
+  progress = (elapsed % 3600) / 3600;
+  timer = "⏱ " + hms(elapsed);
+  state = '<span class="on">MINING 24/7</span>';
+  live = `<b>+${mined.toFixed(4)}</b> mined since last claim`;
  }
- if (st === "ready") {
-  progress = 1; mined = Number(m.reward); timer = "READY";
-  state = "<b>⚡ Cycle complete — claim your VOLTIX</b>";
-  live = `<b>+${fmt(mined, 2)}</b> ready to claim`;
- }
- if (st === "idle") { state = "Reactor offline — start a new cycle"; timer = "24:00:00"; }
+ if (st === "idle") state = "Reactor offline — switch it on once, it never stops";
 
  const ring = $("ring");
  ring.classList.toggle("mining", st === "mining");
- ring.classList.toggle("ready", st === "ready");
+ ring.classList.remove("ready");
  ring.classList.toggle("idle", st === "idle");
- document.body.classList.toggle("mining-on", st === "mining" || st === "ready");
+ document.body.classList.toggle("mining-on", st === "mining");
  $("ringFg").style.strokeDashoffset = RING_LEN * (1 - progress);
  $("mined").textContent = mined.toFixed(4);
  $("timer").textContent = timer;
@@ -773,9 +769,11 @@ function tick(){
  }
 
  if (!busy) {
-  btn.disabled = st === "mining";
-  btn.classList.toggle("ready", st === "ready");
-  btn.textContent = st === "idle" ? "⚡ Start Mining" : st === "ready" ? `Claim ${fmt(m.reward, 0)} VOLTIX` : "Mining in progress…";
+  const canClaim = st === "mining" && mined >= minClaim;
+  btn.disabled = st === "mining" && !canClaim;
+  btn.classList.toggle("ready", canClaim && mined >= perDay());
+  btn.textContent = st === "idle" ? "⚡ Start Mining"
+   : canClaim ? `Claim ${mined.toFixed(2)} VOLTIX` : "Charging…";
  }
 }
 setInterval(tick, 1000);
@@ -828,7 +826,7 @@ $("mineBtn").addEventListener("click", async () => {
    me.mining = r.mining;
    clockOffset = r.mining.now - Date.now() / 1000;
    burst($("ring"), "#00E5FF", 40);
-   toast("⚡ Reactor online — mining started");
+   toast("⚡ Reactor online — mining 24/7");
   } else {
    const r = await api("/api/mining/claim", { method: "POST" });
    burst(btn, "#FFC83D", 50);

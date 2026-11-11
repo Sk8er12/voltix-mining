@@ -1,6 +1,6 @@
 // VOLTIX notifier — scheduled Cloudflare Worker (every 10 minutes).
 //  * Keeps the Telegram bot webhook and menu button pointing at the app.
-//  * Messages users whose mining session has finished and isn't claimed yet.
+//  * Reminds users who haven't collected their 24/7 mining for a day.
 //
 // Bindings: DB (same D1 as the app), secret BOT_TOKEN.
 
@@ -45,28 +45,35 @@ async function ensureBotSetup(env) {
   console.log("bot setup", JSON.stringify({ webhook: set.ok || set.description, menu: menu.ok || menu.description }));
 }
 
+// VOLTIX per day by miner level (same table as the app's MINER_LEVELS).
+const DAILY_BY_LEVEL = [100, 120, 145, 175, 210, 250, 300, 360, 430, 520];
+const DAY = 86400;
+
+// Mining runs 24/7. Once a user hasn't collected for a full day, remind them
+// (at most once a day while they stay away).
 export async function notifyFinished(env) {
   const t = now();
   const { results } = await env.DB.prepare(`
-    SELECT ms.id, ms.reward_micro, u.telegram_id
-    FROM mining_sessions ms JOIN users u ON u.id = ms.user_id
-    WHERE ms.claimed_at IS NULL AND ms.notified_at IS NULL
-      AND ms.ends_at <= ? AND u.telegram_id IS NOT NULL
-    ORDER BY ms.ends_at LIMIT ?
-  `).bind(t, BATCH).all();
+    SELECT id, telegram_id, mining_since, miner_level, reminded_at
+    FROM users
+    WHERE telegram_id IS NOT NULL AND mining_since IS NOT NULL
+      AND mining_since <= ? AND (reminded_at IS NULL OR reminded_at <= ?)
+    ORDER BY mining_since LIMIT ?
+  `).bind(t - DAY, t - DAY, BATCH).all();
 
   let sent = 0;
   for (const row of results) {
     // Mark first so overlapping runs never send twice.
     const mark = await env.DB.prepare(
-      "UPDATE mining_sessions SET notified_at = ? WHERE id = ? AND notified_at IS NULL"
-    ).bind(t, row.id).run();
+      "UPDATE users SET reminded_at = ? WHERE id = ? AND reminded_at IS ?"
+    ).bind(t, row.id, row.reminded_at).run();
     if (!mark.meta.changes) continue;
 
-    const reward = Math.round(row.reward_micro / 1_000_000);
+    const perDay = DAILY_BY_LEVEL[Math.min(Math.max(row.miner_level || 1, 1), DAILY_BY_LEVEL.length) - 1];
+    const mined = Math.floor((t - row.mining_since) * perDay / DAY);
     const res = await tg(env, "sendMessage", {
       chat_id: row.telegram_id,
-      text: `⛏ <b>Mining complete!</b>\n\n${reward} VOLTIX are ready. Claim them and start your next session.`,
+      text: `⛏ <b>Your miner has collected ${mined.toLocaleString("en-US")} VOLTIX!</b>\n\nIt keeps working 24/7 — come grab your coins.`,
       parse_mode: "HTML",
       reply_markup: { inline_keyboard: [[{ text: "⚡ Claim VOLTIX", web_app: { url: APP_URL } }]] }
     });
@@ -79,7 +86,7 @@ export async function notifyFinished(env) {
       await env.DB.prepare("UPDATE users SET telegram_id = NULL WHERE telegram_id = ?").bind(row.telegram_id).run();
     } else if (res.error_code === 429) {
       // Rate limited — retry this one next run.
-      await env.DB.prepare("UPDATE mining_sessions SET notified_at = NULL WHERE id = ?").bind(row.id).run();
+      await env.DB.prepare("UPDATE users SET reminded_at = ? WHERE id = ?").bind(row.reminded_at, row.id).run();
       break;
     }
   }

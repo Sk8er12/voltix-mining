@@ -1,7 +1,8 @@
 # VOLTIX Mining
 
-Telegram / web mini-app on the TON ecosystem: the user connects a TON wallet, starts a 24-hour
-"mining" session, claims 100 VOLTIX points afterwards and invites friends for a 10% bonus.
+Telegram / web mini-app on the TON ecosystem: the user connects a TON wallet and the miner runs
+24/7 — 100 VOLTIX points per day accrue every second and can be claimed at any time. Friends
+bring a 10% bonus on everything they claim.
 
 Hosted on **Cloudflare Pages** (static files + `_worker.js` API) with a **D1** database.
 No build step — plain HTML/JS.
@@ -53,8 +54,8 @@ Bot: `@VoltixMiningBot`, Mini App: `https://t.me/VoltixMiningBot/VTX`.
 
 - The app links the Telegram account (validated `initData`) via `POST /api/telegram/link`.
 - `notifier/` is a separate Worker on a 10-minute cron: it keeps the bot webhook
-  (`/api/telegram/webhook`, answers `/start`) and menu button set, and messages users
-  whose mining has finished.
+  (`/api/telegram/webhook`, answers `/start`) and menu button set, and reminds users who
+  haven't collected their mining for a day (at most once a day).
 
 The bot token is a secret in both places (never in git):
 
@@ -86,8 +87,8 @@ All responses are JSON `{ success, ... }`. Authenticated routes need `Authorizat
 | POST | `/api/auth/verify` | – | verify signed `ton_proof`, create user, returns `token` |
 | POST | `/api/auth/logout` | ✓ | end session |
 | GET  | `/api/me` | ✓ | profile, balance, mining state, referral stats |
-| POST | `/api/mining/start` | ✓ | start a 24h session |
-| POST | `/api/mining/claim` | ✓ | claim finished session (+10% to the referrer) |
+| POST | `/api/mining/start` | ✓ | switch the miner on (new accounts start automatically; it never stops) |
+| POST | `/api/mining/claim` | ✓ | collect everything mined so far, min 0.1 (+10% to the referrer) |
 | POST | `/api/upgrade` | ✓ | buy next miner level (10 levels, 100 → 520 VOLTIX per session) |
 | POST | `/api/checkin` | ✓ | daily bonus: 10 VOLTIX × streak day (max 70) |
 | GET  | `/api/tasks` | ✓ | one-time tasks with progress |
@@ -104,4 +105,6 @@ and the Ed25519 signature. Only then is a session token issued (stored hashed in
 mine or claim for a wallet they don't own.
 
 Tune rewards in the constants at the top of `public/_worker.js`
-(`MINING_DURATION`, `MINING_REWARD`, `REFERRAL_PERCENT`).
+(`MINER_LEVELS` daily rates, `MIN_CLAIM`, `REFERRAL_PERCENT`).
+
+Existing databases: apply the migrations in `migrations/` in order (0004 switches to 24/7 mining).

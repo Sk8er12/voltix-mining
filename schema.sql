@@ -10,8 +10,11 @@ CREATE TABLE IF NOT EXISTS users (
   miner_level      INTEGER NOT NULL DEFAULT 1,
   streak           INTEGER NOT NULL DEFAULT 0,
   last_checkin_day INTEGER,                   -- UTC day number of the last check-in
-  telegram_id      INTEGER                    -- linked Telegram user (notifications)
+  telegram_id      INTEGER,                   -- linked Telegram user (notifications)
+  mining_since     INTEGER,                   -- continuous mining: accrues from here (last claim)
+  reminded_at      INTEGER                    -- last "come collect" Telegram reminder
 );
+CREATE INDEX IF NOT EXISTS idx_users_remind ON users(mining_since) WHERE telegram_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_balance ON users(balance_micro DESC);
 CREATE INDEX IF NOT EXISTS idx_users_telegram ON users(telegram_id);
 
@@ -23,6 +26,7 @@ CREATE TABLE IF NOT EXISTS user_tasks (
   PRIMARY KEY (user_id, task_id)
 );
 
+-- Legacy 24h sessions (before 24/7 mining); no longer written.
 CREATE TABLE IF NOT EXISTS mining_sessions (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id      INTEGER NOT NULL REFERENCES users(id),
