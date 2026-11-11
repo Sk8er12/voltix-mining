@@ -1,0 +1,9 @@
+{
+  "name": "VOLTIX",
+  "symbol": "VTX",
+  "decimals": "9",
+  "description": "VOLTIX (VTX) — the token of the VOLTIX Mining ecosystem on TON. Mine VTX 24/7 in the Telegram mini app @VoltixMiningBot.",
+  "image": "https://voltix-mining.pages.dev/vtx.png",
+  "social": ["https://t.me/VoltixMiningBot"],
+  "websites": ["https://voltix-mining.pages.dev"]
+}
