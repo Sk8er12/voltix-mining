@@ -68,6 +68,16 @@ npx wrangler secret put BOT_TOKEN --name voltix-notifier
 
 Deploy the notifier: `cd notifier && npx wrangler deploy`.
 
+### Admin (withdrawal approval)
+
+Wallets that can approve payouts are listed (raw form, comma separated) in `ADMIN_WALLETS`.
+Store it as a **secret** — plain variables set in the dashboard are replaced on every
+`wrangler pages deploy` because `wrangler.toml` is the source of truth:
+
+```bash
+npx wrangler pages secret put ADMIN_WALLETS --project-name voltix-mining
+```
+
 ## Local development
 
 ```bash
