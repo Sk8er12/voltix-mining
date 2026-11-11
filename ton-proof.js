@@ -7,7 +7,7 @@ import {
   loadStateInit
 } from "@ton/ton";
 import { Buffer } from "buffer";
-import { tryParsePublicKey } from "./wrappers/wallets-data.js";
+import { tryParsePublicKey } from "./wrappers/wallets-data.ts";
 
 const PROOF_PREFIX = Buffer.from("ton-proof-item-v2/", "utf8");
 const CONNECT_PREFIX = Buffer.from("ton-connect", "utf8");
