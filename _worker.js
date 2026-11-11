@@ -58,7 +58,7 @@ export default {
         await db.prepare("INSERT OR IGNORE INTO users (wallet_address, balance_micro, created_at) VALUES (?, 0, ?)").bind(wallet, now).run();
         const sessionId = randomHex();
         await db.prepare("INSERT INTO auth_sessions (id, wallet_address, network, created_at, expires_at) VALUES (?, ?, ?, ?, ?)").bind(sessionId, wallet, body.network, now, now + 2592000).run();
-        return json({ success: true, address: wallet, network: body.network }, 200, { "Set-Cookie": [cookie("vtx_session", sessionId, 2592000), cookie("vtx_attempt", "", 0)] });
+        return json({ success: true, address: wallet, network: body.network }, 200, { "Set-Cookie": cookie("vtx_session", sessionId, 2592000) });
       }
       if (path === "/api/logout" && request.method === "POST") {
         if (cookies.vtx_session) await db.prepare("DELETE FROM auth_sessions WHERE id = ?").bind(cookies.vtx_session).run();
