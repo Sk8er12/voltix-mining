@@ -27,17 +27,22 @@ async function tg(env, method, body) {
 
 async function ensureBotSetup(env) {
   const info = await tg(env, "getWebhookInfo", {});
+  if (!info.ok) {
+    console.warn("getWebhookInfo failed:", info.error_code, info.description);
+    return;
+  }
   // Re-apply once an hour anyway, in case the token (and so the secret) changed.
-  if (info.ok && info.result.url === WEBHOOK_URL && new Date().getUTCMinutes() >= 10) return;
+  if (info.result.url === WEBHOOK_URL && new Date().getUTCMinutes() >= 10) return;
 
-  await tg(env, "setWebhook", {
+  const set = await tg(env, "setWebhook", {
     url: WEBHOOK_URL,
     secret_token: await webhookSecret(env.BOT_TOKEN),
     allowed_updates: ["message"]
   });
-  await tg(env, "setChatMenuButton", {
+  const menu = await tg(env, "setChatMenuButton", {
     menu_button: { type: "web_app", text: "Open VOLTIX", web_app: { url: APP_URL } }
   });
+  console.log("bot setup", JSON.stringify({ webhook: set.ok || set.description, menu: menu.ok || menu.description }));
 }
 
 export async function notifyFinished(env) {
@@ -66,6 +71,7 @@ export async function notifyFinished(env) {
       reply_markup: { inline_keyboard: [[{ text: "⚡ Claim VOLTIX", web_app: { url: APP_URL } }]] }
     });
 
+    if (!res.ok) console.warn("sendMessage failed:", res.error_code, res.description);
     if (res.ok) {
       sent++;
     } else if (res.error_code === 403) {
