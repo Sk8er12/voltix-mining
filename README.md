@@ -68,6 +68,11 @@ All responses are JSON `{ success, ... }`. Authenticated routes need `Authorizat
 | GET  | `/api/me` | ✓ | profile, balance, mining state, referral stats |
 | POST | `/api/mining/start` | ✓ | start a 24h session |
 | POST | `/api/mining/claim` | ✓ | claim finished session (+10% to the referrer) |
+| POST | `/api/upgrade` | ✓ | buy next miner level (10 levels, 100 → 520 VOLTIX per session) |
+| POST | `/api/checkin` | ✓ | daily bonus: 10 VOLTIX × streak day (max 70) |
+| GET  | `/api/tasks` | ✓ | one-time tasks with progress |
+| POST | `/api/tasks/claim` | ✓ | `{ task_id }` claim a completed task |
+| GET  | `/api/leaderboard` | ✓ | top 50 by balance + your rank |
 | GET  | `/api/referrals` | ✓ | invited users |
 | GET  | `/api/transactions` | ✓ | last 50 transactions |
 

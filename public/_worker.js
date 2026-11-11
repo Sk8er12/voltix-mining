@@ -9,12 +9,42 @@
 //                      (default: the host of the incoming request)
 //   ALLOW_TESTNET    — "true" to accept testnet wallets
 
-const VERSION = "3.0.0";
+const VERSION = "3.1.0";
 
 const MINING_DURATION = 24 * 60 * 60;       // seconds
-const MINING_REWARD = 100_000_000;          // 100 VOLTIX (micro units)
 const TOKEN_DECIMALS = 1_000_000;
 const REFERRAL_PERCENT = 10;                // referrer gets 10% of every claim
+const V = n => n * TOKEN_DECIMALS;          // VOLTIX -> micro units
+
+// Miner upgrades: reward per mining session and the price of reaching the level.
+const MINER_LEVELS = [
+  { reward: 100, cost: 0 },
+  { reward: 120, cost: 200 },
+  { reward: 145, cost: 500 },
+  { reward: 175, cost: 1_000 },
+  { reward: 210, cost: 2_000 },
+  { reward: 250, cost: 4_000 },
+  { reward: 300, cost: 8_000 },
+  { reward: 360, cost: 15_000 },
+  { reward: 430, cost: 30_000 },
+  { reward: 520, cost: 60_000 }
+];
+const levelInfo = lvl => MINER_LEVELS[Math.min(Math.max(lvl || 1, 1), MINER_LEVELS.length) - 1];
+
+// Daily check-in: 10 VOLTIX × streak day, capped at day 7.
+const DAILY_BONUS = 10;
+const DAILY_MAX_STREAK = 7;
+
+// One-time tasks. "Active" friends are invited users who claimed at least one mining reward.
+const TASKS = [
+  { id: "first_claim", title: "Claim your first mining reward", reward: 25, goal: 1, stat: "claims" },
+  { id: "invite_1", title: "Invite 1 active friend", reward: 50, goal: 1, stat: "activeRefs" },
+  { id: "invite_3", title: "Invite 3 active friends", reward: 200, goal: 3, stat: "activeRefs" },
+  { id: "invite_10", title: "Invite 10 active friends", reward: 1_000, goal: 10, stat: "activeRefs" },
+  { id: "level_3", title: "Upgrade your miner to level 3", reward: 100, goal: 3, stat: "level" },
+  { id: "level_5", title: "Upgrade your miner to level 5", reward: 500, goal: 5, stat: "level" },
+  { id: "streak_7", title: "Check in 7 days in a row", reward: 150, goal: 7, stat: "streak" }
+];
 
 const PAYLOAD_TTL = 15 * 60;                // ton_proof payload lifetime
 const PROOF_MAX_AGE = 15 * 60;              // max age of a signed proof
@@ -389,6 +419,11 @@ async function profile(db, user) {
     ).bind(user.id).first()
   ]);
 
+  const level = user.miner_level || 1;
+  const next = level < MINER_LEVELS.length ? MINER_LEVELS[level] : null;
+  const today = dayNumber();
+  const streakAlive = user.last_checkin_day >= today - 1;
+
   return {
     wallet: user.wallet_address,
     wallet_friendly: friendlyAddress(user.wallet_address),
@@ -398,12 +433,60 @@ async function profile(db, user) {
     referrals: refs.total,
     referral_earned: formatBalance(refEarned.total),
     mining: miningView(session),
+    miner: {
+      level,
+      max_level: MINER_LEVELS.length,
+      reward: formatBalance(V(levelInfo(level).reward)),
+      next: next && {
+        level: level + 1,
+        reward: formatBalance(V(next.reward)),
+        cost: formatBalance(V(next.cost))
+      }
+    },
+    checkin: {
+      available: !(user.last_checkin_day >= today),
+      streak: streakAlive ? user.streak || 0 : 0,
+      next_bonus: formatBalance(V(DAILY_BONUS * Math.min((streakAlive ? user.streak || 0 : 0) + 1, DAILY_MAX_STREAK))),
+      next_reset: (today + 1) * 86400
+    },
     config: {
       duration: MINING_DURATION,
-      reward: formatBalance(MINING_REWARD),
+      reward: formatBalance(V(levelInfo(level).reward)),
       referral_percent: REFERRAL_PERCENT
     }
   };
+}
+
+const dayNumber = (t = now()) => Math.floor(t / 86400);   // UTC day
+
+async function taskStats(db, user) {
+  const [claims, active] = await Promise.all([
+    db.prepare(
+      "SELECT COUNT(*) AS n FROM transactions WHERE user_id = ? AND type = 'mining_reward'"
+    ).bind(user.id).first(),
+    db.prepare(`
+      SELECT COUNT(*) AS n FROM referrals r
+      WHERE r.referrer_id = ? AND EXISTS (
+        SELECT 1 FROM transactions t WHERE t.user_id = r.referred_id AND t.type = 'mining_reward'
+      )
+    `).bind(user.id).first()
+  ]);
+  const streak = user.last_checkin_day >= dayNumber() - 1 ? user.streak || 0 : 0;
+  return { claims: claims.n, activeRefs: active.n, level: user.miner_level || 1, streak };
+}
+
+async function credit(db, userId, amountMicro, type, t = now()) {
+  await db.batch([
+    db.prepare("UPDATE users SET balance_micro = balance_micro + ? WHERE id = ?").bind(amountMicro, userId),
+    db.prepare(
+      "INSERT INTO transactions (user_id, amount_micro, type, created_at) VALUES (?, ?, ?, ?)"
+    ).bind(userId, amountMicro, type, t)
+  ]);
+}
+
+async function freshProfile(db, userId) {
+  const user = await db.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
+  return profile(db, user);
 }
 
 // ---------------------------------------------------------------- routes
@@ -483,7 +566,7 @@ const routes = {
 
     await db.prepare(
       "INSERT INTO mining_sessions (user_id, started_at, ends_at, reward_micro) VALUES (?, ?, ?, ?)"
-    ).bind(user.id, t, t + MINING_DURATION, MINING_REWARD).run();
+    ).bind(user.id, t, t + MINING_DURATION, V(levelInfo(user.miner_level).reward)).run();
 
     return { message: "Mining started", mining: miningView(await activeSession(db, user.id), t) };
   },
@@ -529,6 +612,108 @@ const routes = {
       reward: formatBalance(reward),
       balance: formatBalance(updated.balance_micro),
       user: await profile(db, updated)
+    };
+  },
+
+  "POST /api/upgrade": async ({ request, db }) => {
+    const { user } = await authUser(request, db);
+    const level = user.miner_level || 1;
+    if (level >= MINER_LEVELS.length) throw new HttpError("Miner is already at max level", 409);
+    const cost = V(MINER_LEVELS[level].cost);
+    const t = now();
+
+    // Atomic: only succeeds if the level is unchanged and the balance covers the price.
+    const done = await db.prepare(`
+      UPDATE users SET balance_micro = balance_micro - ?, miner_level = ?
+      WHERE id = ? AND COALESCE(miner_level, 1) = ? AND balance_micro >= ?
+    `).bind(cost, level + 1, user.id, level, cost).run();
+    if (!done.meta.changes) throw new HttpError("Not enough VOLTIX", 409);
+
+    await db.prepare(
+      "INSERT INTO transactions (user_id, amount_micro, type, created_at) VALUES (?, ?, 'upgrade', ?)"
+    ).bind(user.id, -cost, t).run();
+
+    return { message: `Miner upgraded to level ${level + 1}`, user: await freshProfile(db, user.id) };
+  },
+
+  "POST /api/checkin": async ({ request, db }) => {
+    const { user } = await authUser(request, db);
+    const t = now();
+    const today = dayNumber(t);
+
+    const done = await db.prepare(`
+      UPDATE users SET
+        streak = CASE WHEN last_checkin_day = ? THEN MIN(COALESCE(streak, 0) + 1, 100000) ELSE 1 END,
+        last_checkin_day = ?
+      WHERE id = ? AND (last_checkin_day IS NULL OR last_checkin_day < ?)
+    `).bind(today - 1, today, user.id, today).run();
+    if (!done.meta.changes) throw new HttpError("Already checked in today", 409);
+
+    const { streak } = await db.prepare("SELECT streak FROM users WHERE id = ?").bind(user.id).first();
+    const bonus = V(DAILY_BONUS * Math.min(streak, DAILY_MAX_STREAK));
+    await credit(db, user.id, bonus, "daily_bonus", t);
+
+    return { message: "Daily bonus claimed", bonus: formatBalance(bonus), streak, user: await freshProfile(db, user.id) };
+  },
+
+  "GET /api/tasks": async ({ request, db }) => {
+    const { user } = await authUser(request, db);
+    const [stats, claimed] = await Promise.all([
+      taskStats(db, user),
+      db.prepare("SELECT task_id FROM user_tasks WHERE user_id = ?").bind(user.id).all()
+    ]);
+    const done = new Set(claimed.results.map(r => r.task_id));
+    return {
+      tasks: TASKS.map(task => ({
+        id: task.id,
+        title: task.title,
+        reward: formatBalance(V(task.reward)),
+        progress: Math.min(stats[task.stat], task.goal),
+        goal: task.goal,
+        claimed: done.has(task.id),
+        claimable: !done.has(task.id) && stats[task.stat] >= task.goal
+      }))
+    };
+  },
+
+  "POST /api/tasks/claim": async ({ request, db }) => {
+    const { user } = await authUser(request, db);
+    const body = await readJson(request);
+    const task = TASKS.find(x => x.id === body.task_id);
+    if (!task) throw new HttpError("Unknown task", 404);
+
+    const stats = await taskStats(db, user);
+    if (stats[task.stat] < task.goal) throw new HttpError("Task is not completed yet", 409);
+
+    const t = now();
+    const ins = await db.prepare(
+      "INSERT OR IGNORE INTO user_tasks (user_id, task_id, claimed_at) VALUES (?, ?, ?)"
+    ).bind(user.id, task.id, t).run();
+    if (!ins.meta.changes) throw new HttpError("Task reward already claimed", 409);
+
+    await credit(db, user.id, V(task.reward), "task_reward", t);
+    return { message: "Task reward claimed", reward: formatBalance(V(task.reward)), user: await freshProfile(db, user.id) };
+  },
+
+  "GET /api/leaderboard": async ({ request, db }) => {
+    const { user } = await authUser(request, db);
+    const [top, rank] = await Promise.all([
+      db.prepare(
+        "SELECT id, wallet_address, balance_micro, miner_level FROM users ORDER BY balance_micro DESC, id ASC LIMIT 50"
+      ).all(),
+      db.prepare(
+        "SELECT COUNT(*) + 1 AS rank FROM users WHERE balance_micro > ? OR (balance_micro = ? AND id < ?)"
+      ).bind(user.balance_micro, user.balance_micro, user.id).first()
+    ]);
+    return {
+      my_rank: rank.rank,
+      top: top.results.map((u, i) => ({
+        rank: i + 1,
+        wallet: friendlyAddress(u.wallet_address),
+        balance: formatBalance(u.balance_micro),
+        level: u.miner_level || 1,
+        me: u.id === user.id
+      }))
     };
   },
 

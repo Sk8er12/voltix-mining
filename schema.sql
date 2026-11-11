@@ -6,7 +6,19 @@ CREATE TABLE IF NOT EXISTS users (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   wallet_address TEXT    NOT NULL UNIQUE,     -- raw form, e.g. 0:abc...
   balance_micro  INTEGER NOT NULL DEFAULT 0,  -- 1 VOLTIX = 1 000 000 micro
-  created_at     INTEGER NOT NULL
+  created_at     INTEGER NOT NULL,
+  miner_level      INTEGER NOT NULL DEFAULT 1,
+  streak           INTEGER NOT NULL DEFAULT 0,
+  last_checkin_day INTEGER                    -- UTC day number of the last check-in
+);
+CREATE INDEX IF NOT EXISTS idx_users_balance ON users(balance_micro DESC);
+
+-- Claimed one-time tasks
+CREATE TABLE IF NOT EXISTS user_tasks (
+  user_id    INTEGER NOT NULL REFERENCES users(id),
+  task_id    TEXT    NOT NULL,
+  claimed_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, task_id)
 );
 
 CREATE TABLE IF NOT EXISTS mining_sessions (

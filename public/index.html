@@ -86,7 +86,27 @@ h2{font-size:25px;margin:30px 0 12px}
 .state b{color:var(--ok)}
 
 .tabs{display:flex;gap:6px;background:#0c1524;border:1px solid var(--line);border-radius:14px;padding:4px;margin-bottom:14px}
-.tabs button{flex:1;border:0;background:transparent;color:var(--muted);padding:10px;border-radius:10px;font-size:13px;font-weight:600}
+.tabs button{flex:1;min-width:0;border:0;background:transparent;color:var(--muted);padding:10px 2px;border-radius:10px;font-size:12px;font-weight:600}
+.bal-row{display:flex;justify-content:space-between;align-items:center}
+.link{background:none;border:0;color:var(--accent);font-size:12px;padding:4px 0}
+.daily{display:flex;align-items:center;gap:12px;margin-top:16px;padding:14px;border-radius:14px;background:#0c1524;border:1px solid #1d3352;text-align:left}
+.daily .txt{flex:1;min-width:0}
+.daily .ttl{font-weight:700;font-size:14px}
+.daily .sm{color:var(--muted);font-size:12px;margin-top:2px}
+.pill{border:0;border-radius:10px;background:linear-gradient(100deg,var(--accent2),#38B7FF);color:#fff;padding:10px 14px;font-weight:700;font-size:13px;white-space:nowrap}
+.pill.done{background:#17304f;color:var(--muted)}
+.lvl{font-size:44px;font-weight:900;margin:6px 0 2px}
+.lvl small{font-size:15px;color:var(--muted);font-weight:600}
+.bar{height:8px;border-radius:8px;background:#18304f;overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent2),#38B7FF)}
+.task{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid #1a2c45}
+.task:last-child{border-bottom:0}
+.task .txt{flex:1;min-width:0}
+.task .ttl{font-size:14px;font-weight:600}
+.task .sm{color:var(--accent);font-size:12px;margin-top:3px}
+.list .amt.neg{color:var(--err)}
+.list li.me{background:#13284a;border-radius:10px;padding-left:8px;padding-right:8px}
+.rank{color:var(--muted);width:30px;display:inline-block}
 .tabs button.on{background:#17304f;color:#fff}
 
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
@@ -150,14 +170,19 @@ h2{font-size:25px;margin:30px 0 12px}
   </div>
 
   <div class="card">
-   <div class="label">Balance</div>
+   <div class="bal-row">
+    <div class="label">Balance</div>
+    <button class="link" data-tab="history">History →</button>
+   </div>
    <div class="balance"><span id="balance">0.00</span><small>VOLTIX</small></div>
   </div>
 
   <div class="tabs">
-   <button class="on" data-tab="mine">Mining</button>
+   <button class="on" data-tab="mine">Mine</button>
+   <button data-tab="boost">Boost</button>
+   <button data-tab="tasks">Tasks</button>
    <button data-tab="friends">Friends</button>
-   <button data-tab="history">History</button>
+   <button data-tab="top">Top</button>
   </div>
 
   <div class="card miner" data-pane="mine">
@@ -180,6 +205,39 @@ h2{font-size:25px;margin:30px 0 12px}
    <div class="state" id="state"></div>
    <button class="primary" id="mineBtn">Start Mining</button>
    <p class="hint" id="rate"></p>
+   <div class="daily">
+    <div class="txt">
+     <div class="ttl">Daily bonus</div>
+     <div class="sm" id="dailyInfo"></div>
+    </div>
+    <button class="pill" id="checkinBtn">Claim</button>
+   </div>
+  </div>
+
+  <div class="card hidden" data-pane="boost" style="text-align:center">
+   <div class="label">Miner level</div>
+   <div class="lvl"><span id="lvl">1</span><small id="lvlMax"> / 10</small></div>
+   <div class="hint" id="lvlReward"></div>
+   <div class="bar"><i id="lvlBar"></i></div>
+   <div id="nextBox">
+    <div class="stats">
+     <div class="stat"><div class="label">Next reward</div><div class="v" id="nextReward">0</div></div>
+     <div class="stat"><div class="label">Price</div><div class="v" id="nextCost">0</div></div>
+    </div>
+    <button class="primary" id="upgradeBtn">Upgrade</button>
+   </div>
+   <p class="hint">Upgrades apply to your next mining session.</p>
+  </div>
+
+  <div class="card hidden" data-pane="tasks">
+   <div class="label">Tasks</div>
+   <div id="taskList"></div>
+  </div>
+
+  <div class="card hidden" data-pane="top">
+   <div class="label">Top miners</div>
+   <p class="hint" id="myRank"></p>
+   <ul class="list" id="topList"></ul>
   </div>
 
   <div class="card hidden" data-pane="friends">
@@ -265,12 +323,26 @@ function hms(sec){
 function showLanding(){ $("landing").classList.remove("hidden"); $("dashboard").classList.add("hidden"); }
 function showDashboard(){ $("landing").classList.add("hidden"); $("dashboard").classList.remove("hidden"); }
 
-document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
- document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x === b));
- document.querySelectorAll("[data-pane]").forEach(p => p.classList.toggle("hidden", p.dataset.pane !== b.dataset.tab));
- if (b.dataset.tab === "history") loadHistory();
- if (b.dataset.tab === "friends") loadReferrals();
-}));
+function openTab(tab){
+ document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === tab));
+ document.querySelectorAll("[data-pane]").forEach(p => p.classList.toggle("hidden", p.dataset.pane !== tab));
+ if (tab === "history") loadHistory();
+ if (tab === "friends") loadReferrals();
+ if (tab === "tasks") loadTasks();
+ if (tab === "top") loadTop();
+}
+document.querySelectorAll("button[data-tab]").forEach(b => b.addEventListener("click", () => openTab(b.dataset.tab)));
+
+// Runs an action button with a spinner and shared error handling.
+async function withButton(btn, fn){
+ if (btn.disabled) return;
+ const label = btn.innerHTML;
+ btn.disabled = true;
+ btn.innerHTML = '<span class="spinner"></span>';
+ try { await fn(); }
+ catch (e) { toast(e.message, true); refreshMe(); }
+ finally { btn.innerHTML = label; btn.disabled = false; render(); }
+}
 
 // ---------------------------------------------------------------- API
 async function api(path, opts = {}){
@@ -299,7 +371,43 @@ function render(){
  $("rate").textContent =
   `Earn ${fmt(me.config.reward, 0)} VOLTIX every ${Math.round(me.config.duration / 3600)} hours. Come back to claim and start again.`;
  renderReferralInfo();
+ renderMiner();
+ renderCheckin();
  tick();
+}
+
+function renderMiner(){
+ const m = me.miner;
+ $("lvl").textContent = m.level;
+ $("lvlMax").textContent = " / " + m.max_level;
+ $("lvlReward").textContent = `Current reward: ${fmt(m.reward, 0)} VOLTIX per session`;
+ $("lvlBar").style.width = (m.level / m.max_level * 100) + "%";
+ $("nextBox").classList.toggle("hidden", !m.next);
+ if (m.next) {
+  $("nextReward").textContent = fmt(m.next.reward, 0);
+  $("nextCost").textContent = fmt(m.next.cost, 0);
+  const afford = Number(me.balance) >= Number(m.next.cost);
+  $("upgradeBtn").disabled = !afford;
+  $("upgradeBtn").textContent = afford
+   ? `Upgrade to level ${m.next.level}`
+   : `Need ${fmt(Number(m.next.cost) - Number(me.balance), 2)} more`;
+ }
+}
+
+function renderCheckin(){
+ const c = me.checkin;
+ const btn = $("checkinBtn");
+ if (c.available) {
+  $("dailyInfo").textContent = `Day ${Math.min(c.streak + 1, 7)} streak · +${fmt(c.next_bonus, 0)} VOLTIX`;
+  btn.textContent = "Claim";
+  btn.classList.remove("done");
+  btn.disabled = false;
+ } else {
+  $("dailyInfo").textContent = `${c.streak}-day streak · next in ${hms(c.next_reset - serverNow())}`;
+  btn.textContent = "Done";
+  btn.classList.add("done");
+  btn.disabled = true;
+ }
 }
 
 function tick(){
@@ -329,6 +437,11 @@ function tick(){
  $("mined").textContent = mined.toFixed(4);
  $("timer").textContent = timer;
  $("state").innerHTML = state;
+
+ if (!me.checkin.available) {
+  if (serverNow() >= me.checkin.next_reset) refreshMe();
+  else $("dailyInfo").textContent = `${me.checkin.streak}-day streak · next in ${hms(me.checkin.next_reset - serverNow())}`;
+ }
 
  if (!busy) {
   btn.disabled = st === "mining";
@@ -384,6 +497,65 @@ $("mineBtn").addEventListener("click", async () => {
  }
 });
 
+$("checkinBtn").addEventListener("click", e => withButton(e.currentTarget, async () => {
+ const r = await api("/api/checkin", { method: "POST" });
+ applyUser(r.user);
+ toast(`+${fmt(r.bonus, 0)} VOLTIX · day ${r.streak}`);
+}));
+
+$("upgradeBtn").addEventListener("click", e => withButton(e.currentTarget, async () => {
+ const r = await api("/api/upgrade", { method: "POST" });
+ applyUser(r.user);
+ toast(r.message);
+}));
+
+async function loadTasks(){
+ const box = $("taskList");
+ try {
+  const { tasks } = await api("/api/tasks");
+  box.innerHTML = "";
+  for (const t of tasks) {
+   const row = document.createElement("div");
+   row.className = "task";
+   row.innerHTML = `<div class="txt"><div class="ttl"></div><div class="sm"></div><div class="bar"><i></i></div></div><button class="pill"></button>`;
+   row.querySelector(".ttl").textContent = t.title;
+   row.querySelector(".sm").textContent = `+${fmt(t.reward, 0)} VOLTIX · ${t.progress}/${t.goal}`;
+   row.querySelector(".bar i").style.width = (t.progress / t.goal * 100) + "%";
+   const b = row.querySelector("button");
+   if (t.claimed) { b.textContent = "Done"; b.classList.add("done"); b.disabled = true; }
+   else if (t.claimable) {
+    b.textContent = "Claim";
+    b.addEventListener("click", () => withButton(b, async () => {
+     const r = await api("/api/tasks/claim", { method: "POST", body: { task_id: t.id } });
+     applyUser(r.user);
+     toast(`+${fmt(r.reward, 0)} VOLTIX`);
+     loadTasks();
+    }));
+   } else { b.textContent = "Go"; b.classList.add("done"); b.disabled = true; }
+   box.appendChild(row);
+  }
+ } catch (e) { toast(e.message, true); }
+}
+
+async function loadTop(){
+ const list = $("topList");
+ try {
+  const { top, my_rank } = await api("/api/leaderboard");
+  $("myRank").textContent = `Your place: #${my_rank}`;
+  list.innerHTML = "";
+  for (const u of top) {
+   const li = document.createElement("li");
+   if (u.me) li.className = "me";
+   li.innerHTML = `<div><span class="rank"></span><span class="n"></span><div class="t"></div></div><div class="amt"></div>`;
+   li.querySelector(".rank").textContent = "#" + u.rank;
+   li.querySelector(".n").textContent = u.me ? "You" : short(u.wallet);
+   li.querySelector(".t").textContent = "Level " + u.level;
+   li.querySelector(".amt").textContent = fmt(u.balance, 0);
+   list.appendChild(li);
+  }
+ } catch (e) { toast(e.message, true); }
+}
+
 $("copyRef").addEventListener("click", async () => {
  try { await navigator.clipboard.writeText(referralLink()); toast("Link copied"); }
  catch { toast("Copy failed", true); }
@@ -404,13 +576,18 @@ async function loadHistory(){
   const { transactions } = await api("/api/transactions");
   list.innerHTML = "";
   if (!transactions.length) { list.innerHTML = '<li class="empty">No transactions yet</li>'; return; }
-  const names = { mining_reward: "Mining reward", referral_bonus: "Referral bonus" };
+  const names = {
+   mining_reward: "Mining reward", referral_bonus: "Referral bonus",
+   daily_bonus: "Daily bonus", task_reward: "Task reward", upgrade: "Miner upgrade"
+  };
   for (const tx of transactions) {
    const li = document.createElement("li");
    li.innerHTML = `<div><div class="n"></div><div class="t"></div></div><div class="amt"></div>`;
    li.querySelector(".n").textContent = names[tx.type] || tx.type;
    li.querySelector(".t").textContent = date(tx.created_at);
-   li.querySelector(".amt").textContent = "+" + fmt(tx.amount, 2);
+   const neg = Number(tx.amount) < 0;
+   li.querySelector(".amt").textContent = (neg ? "" : "+") + fmt(tx.amount, 2);
+   if (neg) li.querySelector(".amt").classList.add("neg");
    list.appendChild(li);
   }
  } catch (e) { toast(e.message, true); }
