@@ -85,10 +85,18 @@ export default {
       if (path === "/api/mining/claim" && request.method === "POST") {
         const session = await db.prepare("SELECT * FROM mining_sessions WHERE user_id = ? AND claimed_at IS NULL ORDER BY id DESC LIMIT 1").bind(user.id).first();
         if (!session) return error("No reward available"); if (session.ends_at > now) return error("Mining is not finished");
-        const claimed = await db.prepare("UPDATE mining_sessions SET claimed_at = ? WHERE id = ? AND user_id = ? AND claimed_at IS NULL AND ends_at <= ?").bind(Date.now(), session.id, user.id, now).run();
-        if (!claimed.meta || !claimed.meta.changes) return error("Reward already claimed");
-        await db.prepare("UPDATE users SET balance_micro = balance_micro + ? WHERE id = ?").bind(session.reward_micro, user.id).run();
-        await db.prepare("INSERT INTO transactions (user_id, amount_micro, type, created_at) VALUES (?, ?, ?, ?)").bind(user.id, session.reward_micro, "mining_reward", now).run();
+        const claimMarker = Date.now();
+        // Keep claiming, balance credit, and transaction history in one D1 transaction.
+        // If any statement fails, D1 rolls the batch back instead of losing a reward.
+        const claimResults = await db.batch([
+          db.prepare("UPDATE mining_sessions SET claimed_at = ? WHERE id = ? AND user_id = ? AND claimed_at IS NULL AND ends_at <= ?")
+            .bind(claimMarker, session.id, user.id, now),
+          db.prepare("UPDATE users SET balance_micro = balance_micro + (SELECT reward_micro FROM mining_sessions WHERE id = ? AND user_id = ? AND claimed_at = ?) WHERE id = ? AND EXISTS (SELECT 1 FROM mining_sessions WHERE id = ? AND user_id = ? AND claimed_at = ?)")
+            .bind(session.id, user.id, claimMarker, user.id, session.id, user.id, claimMarker),
+          db.prepare("INSERT INTO transactions (user_id, amount_micro, type, created_at) SELECT ?, reward_micro, ?, ? FROM mining_sessions WHERE id = ? AND user_id = ? AND claimed_at = ?")
+            .bind(user.id, "mining_reward", now, session.id, user.id, claimMarker)
+        ]);
+        if (!claimResults[0]?.meta?.changes) return error("Reward already claimed");
         const updated = await getUser(db, user.wallet_address);
         return json({ success: true, message: "Reward claimed", reward: formatBalance(session.reward_micro), balance: formatBalance(updated.balance_micro) });
       }
