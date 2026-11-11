@@ -9,9 +9,11 @@ CREATE TABLE IF NOT EXISTS users (
   created_at     INTEGER NOT NULL,
   miner_level      INTEGER NOT NULL DEFAULT 1,
   streak           INTEGER NOT NULL DEFAULT 0,
-  last_checkin_day INTEGER                    -- UTC day number of the last check-in
+  last_checkin_day INTEGER,                   -- UTC day number of the last check-in
+  telegram_id      INTEGER                    -- linked Telegram user (notifications)
 );
 CREATE INDEX IF NOT EXISTS idx_users_balance ON users(balance_micro DESC);
+CREATE INDEX IF NOT EXISTS idx_users_telegram ON users(telegram_id);
 
 -- Claimed one-time tasks
 CREATE TABLE IF NOT EXISTS user_tasks (
@@ -27,8 +29,10 @@ CREATE TABLE IF NOT EXISTS mining_sessions (
   started_at   INTEGER NOT NULL,
   ends_at      INTEGER NOT NULL,
   reward_micro INTEGER NOT NULL,
-  claimed_at   INTEGER
+  claimed_at   INTEGER,
+  notified_at  INTEGER                        -- "mining finished" message sent
 );
+CREATE INDEX IF NOT EXISTS idx_mining_notify ON mining_sessions(ends_at) WHERE claimed_at IS NULL AND notified_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_mining_user ON mining_sessions(user_id, claimed_at);
 
 CREATE TABLE IF NOT EXISTS referrals (

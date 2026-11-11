@@ -269,7 +269,7 @@ h2{font-size:25px;margin:30px 0 12px}
 <script>
 // Set this to your Telegram Mini App link (e.g. "https://t.me/VoltixBot/app")
 // to generate t.me invite links. Leave empty to use website links.
-const TELEGRAM_APP_URL = "";
+const TELEGRAM_APP_URL = "https://t.me/VoltixMiningBot/VTX";
 
 const $ = id => document.getElementById(id);
 const tg = window.Telegram && window.Telegram.WebApp;
@@ -469,6 +469,19 @@ function applyUser(user){
  me = user;
  clockOffset = user.mining.now - Date.now() / 1000;
  render();
+ linkTelegram();
+}
+
+// Inside Telegram: attach this Telegram account so the bot can send
+// "mining finished" notifications.
+let telegramLinkTried = false;
+async function linkTelegram(){
+ if (!inTelegram || !me || me.telegram_linked || telegramLinkTried) return;
+ telegramLinkTried = true;
+ try {
+  await api("/api/telegram/link", { method: "POST", body: { init_data: tg.initData } });
+  me.telegram_linked = true;
+ } catch (e) { console.warn("Telegram link failed:", e.message); }
 }
 
 // ---------------------------------------------------------------- actions

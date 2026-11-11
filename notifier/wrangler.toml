@@ -1,0 +1,15 @@
+name = "voltix-notifier"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+workers_dev = false
+
+[triggers]
+crons = ["*/10 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "voltaic-db"
+database_id = "cf4203dd-290c-4cfe-ba9b-2624ff3fcc3c"
+
+# Secret (set once, not stored in git):
+#   npx wrangler secret put BOT_TOKEN

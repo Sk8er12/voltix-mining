@@ -47,6 +47,26 @@ Create a bot with @BotFather → `/newapp`, point it to your Pages URL, then set
 (e.g. `https://t.me/VoltixBot/app`) so invite links open inside Telegram
 (`?startapp=<code>` is used as the referral code).
 
+### Telegram bot & notifications
+
+Bot: `@VoltixMiningBot`, Mini App: `https://t.me/VoltixMiningBot/VTX`.
+
+- The app links the Telegram account (validated `initData`) via `POST /api/telegram/link`.
+- `notifier/` is a separate Worker on a 10-minute cron: it keeps the bot webhook
+  (`/api/telegram/webhook`, answers `/start`) and menu button set, and messages users
+  whose mining has finished.
+
+The bot token is a secret in both places (never in git):
+
+```bash
+npx wrangler pages secret put BOT_TOKEN --project-name voltix-mining
+```
+```bash
+npx wrangler secret put BOT_TOKEN --name voltix-notifier
+```
+
+Deploy the notifier: `cd notifier && npx wrangler deploy`.
+
 ## Local development
 
 ```bash

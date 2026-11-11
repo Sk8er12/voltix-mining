@@ -9,7 +9,7 @@
 //                      (default: the host of the incoming request)
 //   ALLOW_TESTNET    — "true" to accept testnet wallets
 
-const VERSION = "3.1.0";
+const VERSION = "3.2.0";
 
 const MINING_DURATION = 24 * 60 * 60;       // seconds
 const TOKEN_DECIMALS = 1_000_000;
@@ -364,6 +364,74 @@ async function verifyTonProof(body, request, env, db) {
   return { raw: rawAddress(address), testnet: network === TESTNET };
 }
 
+// ---------------------------------------------------------------- Telegram
+
+const APP_URL = "https://voltix-mining.pages.dev";
+const INIT_DATA_MAX_AGE = 24 * 60 * 60;
+
+async function hmacSha256(key, message) {
+  const k = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return new Uint8Array(await crypto.subtle.sign("HMAC", k, message));
+}
+
+// Secret Telegram must send with every webhook call; derived from the token
+// so the notifier worker can register the webhook with the same value.
+async function webhookSecret(botToken) {
+  return hex(await sha256(enc.encode("voltix-webhook:" + botToken))).slice(0, 48);
+}
+
+// https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
+async function verifyInitData(initData, botToken) {
+  const params = new URLSearchParams(String(initData || ""));
+  const hash = params.get("hash") || "";
+  params.delete("hash");
+  const check = [...params.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\n");
+  const secret = await hmacSha256(enc.encode("WebAppData"), enc.encode(botToken));
+  const expected = hex(await hmacSha256(secret, enc.encode(check)));
+  if (!/^[0-9a-f]{64}$/.test(hash) || !equalBytes(fromHex(expected), fromHex(hash))) {
+    throw new HttpError("Invalid Telegram data", 401);
+  }
+  if (now() - Number(params.get("auth_date")) > INIT_DATA_MAX_AGE) {
+    throw new HttpError("Telegram data expired", 401);
+  }
+  const user = JSON.parse(params.get("user") || "null");
+  if (!user || !Number.isSafeInteger(user.id)) throw new HttpError("No Telegram user", 400);
+  return user;
+}
+
+async function tgCall(botToken, method, body) {
+  const res = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  return res.json().catch(() => ({ ok: false }));
+}
+
+async function handleTelegramUpdate(update, env) {
+  const msg = update.message;
+  if (!msg || !msg.chat || msg.chat.type !== "private" || typeof msg.text !== "string") return;
+  if (!msg.text.startsWith("/start")) return;
+
+  // t.me/VoltixMiningBot?start=V1 → pass the referral code into the app
+  const ref = /^\/start\s+(V[0-9A-Za-z]{1,10})$/.exec(msg.text.trim());
+  const url = ref ? `${APP_URL}/?ref=${ref[1]}` : APP_URL;
+
+  await tgCall(env.BOT_TOKEN, "sendMessage", {
+    chat_id: msg.chat.id,
+    text:
+      "⚡ <b>Welcome to VOLTIX Mining!</b>\n\n" +
+      "Connect your TON wallet, start the miner and claim VOLTIX every 24 hours.\n" +
+      "Upgrade your miner, complete tasks and invite friends for +10%.\n\n" +
+      "I'll message you here when your mining is ready to claim.",
+    parse_mode: "HTML",
+    reply_markup: { inline_keyboard: [[{ text: "⛏ Open VOLTIX", web_app: { url } }]] }
+  });
+}
+
 // ---------------------------------------------------------------- users & sessions
 
 const refCode = id => "V" + Number(id).toString(36).toUpperCase();
@@ -432,6 +500,7 @@ async function profile(db, user) {
     ref_code: refCode(user.id),
     referrals: refs.total,
     referral_earned: formatBalance(refEarned.total),
+    telegram_linked: !!user.telegram_id,
     mining: miningView(session),
     miner: {
       level,
@@ -613,6 +682,29 @@ const routes = {
       balance: formatBalance(updated.balance_micro),
       user: await profile(db, updated)
     };
+  },
+
+  // Mini App sends Telegram initData; we store the Telegram user id for notifications.
+  "POST /api/telegram/link": async ({ request, env, db }) => {
+    const { user } = await authUser(request, db);
+    if (!env.BOT_TOKEN) throw new HttpError("Telegram bot is not configured", 503);
+    const body = await readJson(request);
+    const tgUser = await verifyInitData(body.init_data, env.BOT_TOKEN);
+    await db.batch([
+      // One Telegram account ↔ one wallet: move the link if it was elsewhere.
+      db.prepare("UPDATE users SET telegram_id = NULL WHERE telegram_id = ? AND id <> ?").bind(tgUser.id, user.id),
+      db.prepare("UPDATE users SET telegram_id = ? WHERE id = ?").bind(tgUser.id, user.id)
+    ]);
+    return { message: "Telegram linked" };
+  },
+
+  // Bot webhook (registered automatically by the notifier worker).
+  "POST /api/telegram/webhook": async ({ request, env }) => {
+    if (!env.BOT_TOKEN) throw new HttpError("Not configured", 503);
+    const got = request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "";
+    if (got !== await webhookSecret(env.BOT_TOKEN)) throw new HttpError("Forbidden", 403);
+    await handleTelegramUpdate(await readJson(request), env);
+    return {};
   },
 
   "POST /api/upgrade": async ({ request, db }) => {
