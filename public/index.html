@@ -3,155 +3,340 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#080D18">
+<meta name="theme-color" content="#05060F">
 <title>VOLTIX Mining</title>
 <link rel="icon" href="/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Orbitron:wght@600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
 <style>
-*{box-sizing:border-box}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{
- --bg:#080D18;--card:#101b2c;--line:#24446c;--muted:#8999B1;--dim:#52647E;
- --accent:#65B7FF;--accent2:#1679E9;--ok:#3BD59A;--err:#FF6B7A;
+ --bg:#05060F;
+ --glass:rgba(16,22,48,.55);
+ --glass-hi:rgba(28,38,80,.6);
+ --edge:rgba(120,160,255,.16);
+ --edge-hi:rgba(0,229,255,.45);
+ --text:#F2F6FF;
+ --muted:#8A97B8;
+ --dim:#4F5B7A;
+ --cyan:#00E5FF;
+ --blue:#2F7BFF;
+ --violet:#8B5CFF;
+ --pink:#FF3DCB;
+ --gold:#FFC83D;
+ --ok:#2EF2A3;
+ --err:#FF5C7A;
+ --display:"Orbitron","Inter",system-ui,sans-serif;
+ --nav-h:74px;
 }
-html,body{margin:0;background:var(--bg);color:#fff}
+html,body{margin:0;background:var(--bg);color:var(--text)}
 body{
- font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
- min-height:100vh;display:flex;justify-content:center;
- padding:24px 16px calc(24px + env(safe-area-inset-bottom));
+ font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+ min-height:100vh;display:flex;justify-content:center;overflow-x:hidden;
+ padding:18px 16px calc(28px + env(safe-area-inset-bottom));
 }
-button{font:inherit;cursor:pointer}
-button:disabled{opacity:.55;cursor:default}
-.app{width:100%;max-width:420px}
+body.has-nav{padding-bottom:calc(var(--nav-h) + 30px + env(safe-area-inset-bottom))}
+button{font:inherit;cursor:pointer;color:inherit}
+button:disabled{cursor:default}
+.app{width:100%;max-width:440px;position:relative;z-index:1}
 .hidden{display:none!important}
 
+/* ---------- living background ---------- */
+#fx{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+.aurora{position:fixed;inset:-20%;z-index:0;pointer-events:none;filter:blur(70px);opacity:.55}
+.aurora i{position:absolute;border-radius:50%;mix-blend-mode:screen;animation:drift 18s ease-in-out infinite alternate}
+.aurora i:nth-child(1){width:55vmax;height:55vmax;left:-5%;top:-10%;background:radial-gradient(circle,#1d4bff 0%,transparent 65%)}
+.aurora i:nth-child(2){width:50vmax;height:50vmax;right:-10%;top:20%;background:radial-gradient(circle,#7a2cff 0%,transparent 65%);animation-duration:22s;animation-delay:-6s}
+.aurora i:nth-child(3){width:45vmax;height:45vmax;left:20%;bottom:-20%;background:radial-gradient(circle,#00b8ff 0%,transparent 65%);animation-duration:26s;animation-delay:-12s;opacity:.7}
+@keyframes drift{0%{transform:translate(0,0) scale(1)}50%{transform:translate(6%,4%) scale(1.12)}100%{transform:translate(-5%,-3%) scale(.95)}}
+.grid-floor{
+ position:fixed;left:-50%;right:-50%;bottom:-10vh;height:45vh;z-index:0;pointer-events:none;
+ background-image:linear-gradient(rgba(0,229,255,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.18) 1px,transparent 1px);
+ background-size:46px 46px;transform:perspective(420px) rotateX(62deg);transform-origin:bottom;
+ mask-image:linear-gradient(to top,#000 0%,transparent 85%);-webkit-mask-image:linear-gradient(to top,#000 0%,transparent 85%);
+ animation:floor 3.5s linear infinite;opacity:.55
+}
+@keyframes floor{to{background-position:0 46px,0 0}}
+
+/* ---------- shared ---------- */
+.glass{
+ background:linear-gradient(160deg,var(--glass-hi),var(--glass));
+ border:1px solid var(--edge);border-radius:24px;
+ backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);
+ box-shadow:0 20px 50px -20px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.06);
+}
+.card{padding:20px;margin-bottom:14px;position:relative;overflow:hidden}
+.label{color:var(--muted);font-size:11px;letter-spacing:2.5px;text-transform:uppercase;font-weight:600}
+.display{font-family:var(--display)}
+.grad-text{
+ background:linear-gradient(90deg,#fff 0%,var(--cyan) 30%,var(--violet) 60%,#fff 100%);background-size:250% 100%;
+ -webkit-background-clip:text;background-clip:text;color:transparent;animation:shimmer 6s linear infinite
+}
+@keyframes shimmer{to{background-position:-250% 0}}
+
+.cta{
+ position:relative;width:100%;padding:19px 18px;border:0;border-radius:18px;overflow:hidden;
+ background:linear-gradient(100deg,var(--blue) 0%,var(--cyan) 50%,var(--violet) 100%);background-size:200% 100%;
+ color:#fff;font-family:var(--display);font-size:16px;font-weight:800;letter-spacing:2px;text-transform:uppercase;
+ box-shadow:0 10px 40px -8px rgba(0,229,255,.55),0 0 0 1px rgba(255,255,255,.12) inset;
+ animation:ctaflow 5s ease-in-out infinite;transition:transform .15s,filter .2s
+}
+.cta::after{
+ content:"";position:absolute;top:0;bottom:0;left:-60%;width:40%;
+ background:linear-gradient(100deg,transparent,rgba(255,255,255,.55),transparent);transform:skewX(-20deg);
+ animation:shine 3.2s ease-in-out infinite
+}
+.cta:active:not(:disabled){transform:scale(.97)}
+.cta:disabled{filter:saturate(.25) brightness(.65);box-shadow:none;animation:none}
+.cta:disabled::after{display:none}
+.cta.ready{background:linear-gradient(100deg,#FF9F1C,var(--gold),#FFE58A,var(--gold));background-size:200% 100%;color:#241500;box-shadow:0 10px 45px -6px rgba(255,200,61,.7);animation:ctaflow 2.5s ease-in-out infinite,pulse-gold 1.6s ease-in-out infinite}
+@keyframes ctaflow{0%,100%{background-position:0 0}50%{background-position:100% 0}}
+@keyframes shine{0%{left:-60%}60%,100%{left:130%}}
+@keyframes pulse-gold{0%,100%{box-shadow:0 10px 45px -6px rgba(255,200,61,.6)}50%{box-shadow:0 10px 60px 0 rgba(255,200,61,.9)}}
+
+.pill{
+ border:0;border-radius:12px;padding:10px 16px;font-weight:800;font-size:13px;white-space:nowrap;color:#fff;
+ background:linear-gradient(100deg,var(--blue),var(--cyan));box-shadow:0 6px 20px -6px rgba(0,229,255,.7)
+}
+.pill.done{background:rgba(255,255,255,.06);color:var(--dim);box-shadow:none}
+.pill:active:not(:disabled){transform:scale(.95)}
+
 /* ---------- landing ---------- */
-.landing{text-align:center;padding-top:6vh}
-.logo{
- width:112px;height:112px;margin:0 auto 25px;border-radius:32px;
- background:linear-gradient(145deg,#153B75,#071326);border:1px solid #2767B8;
- display:grid;place-items:center;box-shadow:0 0 55px #0879ff35;
- font-size:54px;font-weight:900;color:#62B7FF;
+.landing{text-align:center;padding-top:3vh;animation:rise .8s cubic-bezier(.2,.8,.2,1) both}
+@keyframes rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+.core{position:relative;width:min(210px,52vw);aspect-ratio:1;margin:0 auto 6px}
+.core .halo{position:absolute;inset:-30px;border-radius:50%;background:radial-gradient(circle,rgba(0,229,255,.35),rgba(139,92,255,.15) 45%,transparent 70%);animation:breathe 3.2s ease-in-out infinite}
+.core .ring{position:absolute;border-radius:50%;border:1px solid transparent}
+.core .ring.a{inset:0;border-color:rgba(0,229,255,.25);border-top-color:var(--cyan);border-right-color:var(--cyan);animation:spin 6s linear infinite;box-shadow:0 0 30px rgba(0,229,255,.15)}
+.core .ring.b{inset:8%;border-style:dashed;border-color:rgba(139,92,255,.5);animation:spin 14s linear infinite reverse}
+.core .ring.c{inset:15%;border:2px solid transparent;border-bottom-color:var(--violet);border-left-color:var(--pink);animation:spin 3.5s linear infinite}
+.core .orb{
+ position:absolute;inset:24%;border-radius:50%;display:grid;place-items:center;
+ background:radial-gradient(circle at 35% 30%,#3df2ff 0%,#1b5cff 35%,#3a1590 70%,#0b0624 100%);
+ box-shadow:0 0 60px rgba(0,229,255,.6),0 0 120px rgba(139,92,255,.4),inset 0 0 40px rgba(255,255,255,.25);
+ animation:breathe 3.2s ease-in-out infinite
 }
-h1{font-size:36px;letter-spacing:5px;margin:0}
-.sub{color:#8194B2;letter-spacing:4px;font-size:13px;margin-top:14px}
-.tag{
- display:inline-block;margin-top:32px;padding:9px 16px;border:1px solid var(--line);
- border-radius:30px;color:var(--accent);font-size:12px;letter-spacing:2px
-}
-h2{font-size:25px;margin:30px 0 12px}
-.desc{color:var(--muted);font-size:15px;line-height:1.7}
-.primary{
- width:100%;padding:18px;border:0;border-radius:16px;
- background:linear-gradient(100deg,var(--accent2),#38B7FF);color:#fff;
- font-size:18px;font-weight:700;box-shadow:0 8px 35px #168bff35;
-}
-.landing .primary{margin-top:35px}
-.note{font-size:11px;color:#687B96;margin-top:18px;letter-spacing:1px}
-.footer{margin-top:50px;color:var(--dim);font-size:11px;letter-spacing:3px}
+.core .orb svg{width:62px;height:62px;filter:drop-shadow(0 0 12px #fff) drop-shadow(0 0 24px var(--cyan));animation:flicker 4s infinite}
+.core .sat{position:absolute;inset:0;animation:spin 5s linear infinite}
+.core .sat i{position:absolute;top:-4px;left:50%;width:8px;height:8px;margin-left:-4px;border-radius:50%;background:#fff;box-shadow:0 0 12px var(--cyan),0 0 24px var(--cyan)}
+.core .sat.s2{animation-duration:9s;animation-direction:reverse;inset:8%}
+.core .sat.s2 i{background:var(--pink);box-shadow:0 0 12px var(--pink),0 0 24px var(--pink)}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+@keyframes flicker{0%,100%,22%,26%,70%{opacity:1}24%,72%{opacity:.55}}
+
+.brand{font-family:var(--display);font-size:46px;font-weight:900;letter-spacing:10px;margin:14px 0 0;padding-left:10px}
+.tagline{color:var(--muted);letter-spacing:5px;font-size:12px;margin-top:10px;font-weight:600}
+.headline{font-size:25px;font-weight:800;line-height:1.25;margin:20px 0 10px}
+.headline em{font-style:normal;color:var(--cyan);text-shadow:0 0 18px rgba(0,229,255,.6)}
+.desc{color:var(--muted);font-size:15px;line-height:1.65;margin:0 auto;max-width:340px}
+.feats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:20px 0 20px}
+.feat{padding:14px 8px;border-radius:18px;text-align:center}
+.feat .ic{font-size:22px;filter:drop-shadow(0 0 8px rgba(0,229,255,.6))}
+.feat .v{font-family:var(--display);font-weight:800;font-size:15px;margin-top:6px}
+.feat .t{color:var(--muted);font-size:11px;margin-top:3px;line-height:1.3}
+.note{font-size:11px;color:var(--dim);margin-top:16px;letter-spacing:2px}
+.note b{color:var(--ok);font-weight:600}
+.footer{margin-top:40px;color:var(--dim);font-size:11px;letter-spacing:3px;text-align:center}
 .footer a{color:var(--dim)}
 
 /* ---------- dashboard ---------- */
-.top{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.dash{animation:rise .6s cubic-bezier(.2,.8,.2,1) both}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:16px}
 .mini-logo{
- width:40px;height:40px;border-radius:12px;flex:none;
- background:linear-gradient(145deg,#153B75,#071326);border:1px solid #2767B8;
- display:grid;place-items:center;font-weight:900;color:#62B7FF;
+ width:42px;height:42px;border-radius:14px;flex:none;display:grid;place-items:center;
+ background:radial-gradient(circle at 35% 30%,#3df2ff,#1b5cff 45%,#3a1590 90%);
+ box-shadow:0 0 22px rgba(0,229,255,.5)
 }
+.mini-logo svg{width:22px;height:22px;filter:drop-shadow(0 0 6px #fff)}
 .top .who{flex:1;min-width:0}
-.top .name{font-weight:800;letter-spacing:3px;font-size:15px}
-.top .addr{color:var(--muted);font-size:12px;font-family:ui-monospace,Menlo,monospace;
- overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ghost{
- background:transparent;color:var(--muted);border:1px solid #34445c;
- padding:8px 12px;border-radius:10px;font-size:12px
+.top .name{font-family:var(--display);font-weight:900;letter-spacing:4px;font-size:16px}
+.top .addr{
+ display:inline-flex;align-items:center;gap:6px;margin-top:3px;color:var(--muted);font-size:12px;
+ font-family:ui-monospace,Menlo,monospace;max-width:100%;overflow:hidden;white-space:nowrap
 }
-.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;margin-bottom:14px}
-.label{color:var(--muted);font-size:11px;letter-spacing:2px;text-transform:uppercase}
-.balance{font-size:34px;font-weight:800;margin-top:6px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.balance small{font-size:15px;color:var(--accent);font-weight:700;margin-left:6px}
+.top .addr::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok);flex:none}
+.icon-btn{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;border:1px solid var(--edge);background:var(--glass)}
+.icon-btn svg{width:18px;height:18px;stroke:var(--muted)}
 
-.miner{text-align:center}
-.ring{position:relative;width:210px;height:210px;margin:6px auto 16px}
-.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
-.ring circle{fill:none;stroke-width:10}
-.ring .bg{stroke:#18304f}
-.ring .fg{stroke:url(#grad);stroke-linecap:round;transition:stroke-dashoffset .9s linear}
-.ring .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.ring .mined{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
-.ring .unit{color:var(--accent);font-size:12px;letter-spacing:2px;margin-top:2px}
-.ring .timer{color:var(--muted);font-size:13px;margin-top:10px;font-variant-numeric:tabular-nums}
-.ring.active{filter:drop-shadow(0 0 18px #168bff40)}
-.state{font-size:13px;color:var(--muted);margin-bottom:14px;min-height:18px}
-.state b{color:var(--ok)}
-
-.tabs{display:flex;gap:6px;background:#0c1524;border:1px solid var(--line);border-radius:14px;padding:4px;margin-bottom:14px}
-.tabs button{flex:1;min-width:0;border:0;background:transparent;color:var(--muted);padding:10px 2px;border-radius:10px;font-size:12px;font-weight:600}
+.balance-card{padding:20px 20px 18px}
+.balance-card::before{
+ content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;pointer-events:none;
+ background:linear-gradient(120deg,rgba(0,229,255,.7),transparent 35%,transparent 65%,rgba(139,92,255,.7));
+ -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude
+}
 .bal-row{display:flex;justify-content:space-between;align-items:center}
-.link{background:none;border:0;color:var(--accent);font-size:12px;padding:4px 0}
-.daily{display:flex;align-items:center;gap:12px;margin-top:16px;padding:14px;border-radius:14px;background:#0c1524;border:1px solid #1d3352;text-align:left}
-.daily .txt{flex:1;min-width:0}
-.daily .ttl{font-weight:700;font-size:14px}
-.daily .sm{color:var(--muted);font-size:12px;margin-top:2px}
-.pill{border:0;border-radius:10px;background:linear-gradient(100deg,var(--accent2),#38B7FF);color:#fff;padding:10px 14px;font-weight:700;font-size:13px;white-space:nowrap}
-.pill.done{background:#17304f;color:var(--muted)}
-.lvl{font-size:44px;font-weight:900;margin:6px 0 2px}
-.lvl small{font-size:15px;color:var(--muted);font-weight:600}
-.bar{height:8px;border-radius:8px;background:#18304f;overflow:hidden;margin-top:8px}
-.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent2),#38B7FF)}
-.task{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid #1a2c45}
-.task:last-child{border-bottom:0}
-.task .txt{flex:1;min-width:0}
-.task .ttl{font-size:14px;font-weight:600}
-.task .sm{color:var(--accent);font-size:12px;margin-top:3px}
-.list .amt.neg{color:var(--err)}
-.list li.me{background:#13284a;border-radius:10px;padding-left:8px;padding-right:8px}
-.rank{color:var(--muted);width:30px;display:inline-block}
-.tabs button.on{background:#17304f;color:#fff}
+.link{background:none;border:0;color:var(--cyan);font-size:12px;font-weight:600;padding:4px 0}
+.balance{display:flex;align-items:baseline;gap:8px;margin-top:8px;flex-wrap:wrap}
+.balance .num{font-family:var(--display);font-size:38px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:1px;text-shadow:0 0 30px rgba(0,229,255,.35);overflow-wrap:anywhere}
+.balance .cur{font-family:var(--display);font-size:13px;font-weight:700;color:var(--cyan);letter-spacing:2px}
+.balance .num.bump{animation:bump .6s ease}
+@keyframes bump{30%{transform:scale(1.08);color:var(--gold);text-shadow:0 0 30px rgba(255,200,61,.8)}}
+.live{margin-top:6px;font-size:12px;color:var(--muted);min-height:16px}
+.live b{color:var(--ok);font-variant-numeric:tabular-nums}
 
-.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
-.stat{background:#0c1524;border:1px solid #1d3352;border-radius:12px;padding:12px}
-.stat .v{font-size:20px;font-weight:800;margin-top:4px;overflow-wrap:anywhere}
-.reflink{
- display:flex;gap:8px;align-items:center;background:#0c1524;border:1px solid #1d3352;
- border-radius:12px;padding:6px 6px 6px 12px;margin-top:12px
-}
-.reflink span{flex:1;min-width:0;font-size:12px;color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.reflink button{border:0;border-radius:9px;background:#17304f;color:#fff;padding:9px 12px;font-size:12px;font-weight:600}
-.share{margin-top:10px;width:100%;padding:13px;border-radius:12px;border:1px solid var(--line);background:transparent;color:#fff;font-weight:600}
+/* reactor */
+.miner{text-align:center;padding:22px 20px}
+.reactor{position:relative;width:min(290px,78vw);aspect-ratio:1;margin:4px auto 18px;--c1:var(--cyan);--c2:var(--violet);--speed:1}
+.reactor .r-glow{position:absolute;inset:6%;border-radius:50%;background:radial-gradient(circle,rgba(0,229,255,.28),rgba(139,92,255,.12) 50%,transparent 70%);transition:opacity .6s;opacity:.35}
+.reactor .r-dash{position:absolute;inset:0;border-radius:50%;border:1px dashed rgba(138,151,184,.35);animation:spin 40s linear infinite}
+.reactor .r-ticks{position:absolute;inset:3%;border-radius:50%;
+ background:repeating-conic-gradient(rgba(138,151,184,.35) 0 1deg,transparent 1deg 6deg);
+ -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 7px),#000 calc(100% - 6px));mask:radial-gradient(farthest-side,transparent calc(100% - 7px),#000 calc(100% - 6px))}
+.reactor svg.prog{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);overflow:visible}
+.reactor svg.prog circle{fill:none}
+.reactor .track{stroke:rgba(255,255,255,.06);stroke-width:9}
+.reactor .fg{stroke:url(#rgrad);stroke-width:9;stroke-linecap:round;transition:stroke-dashoffset .9s linear;filter:url(#rglow)}
+.reactor .r-conic{position:absolute;inset:17%;border-radius:50%;
+ background:conic-gradient(from 0deg,transparent 0deg,var(--c1) 90deg,var(--c2) 160deg,transparent 220deg);
+ -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2px));mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2px));
+ animation:spin calc(2.6s / var(--speed)) linear infinite;opacity:.25;transition:opacity .6s}
+.reactor .r-conic.b{inset:21%;animation-direction:reverse;animation-duration:calc(4s / var(--speed));background:conic-gradient(from 180deg,transparent 0deg,var(--c2) 70deg,var(--pink) 120deg,transparent 170deg)}
+.reactor .r-core{position:absolute;inset:25%;border-radius:50%;
+ background:radial-gradient(circle at 50% 40%,#101a44 0%,#080b22 65%,#05060f 100%);
+ box-shadow:inset 0 0 35px rgba(0,229,255,.18),0 0 0 1px rgba(0,229,255,.12);transition:box-shadow .6s}
+.reactor .r-orbit{position:absolute;inset:9%;animation:spin calc(7s / var(--speed)) linear infinite;opacity:.3;transition:opacity .6s}
+.reactor .r-orbit i{position:absolute;top:-3px;left:50%;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:#fff;box-shadow:0 0 10px var(--c1),0 0 20px var(--c1)}
+.reactor .r-orbit.o2{inset:13%;animation-duration:calc(11s / var(--speed));animation-direction:reverse}
+.reactor .r-orbit.o2 i{box-shadow:0 0 10px var(--pink),0 0 20px var(--pink)}
+.reactor .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+.reactor .mined{font-family:var(--display);font-size:clamp(22px,7vw,30px);font-weight:800;font-variant-numeric:tabular-nums;text-shadow:0 0 18px rgba(0,229,255,.6)}
+.reactor .unit{font-family:var(--display);color:var(--cyan);font-size:11px;letter-spacing:3px;margin-top:4px;font-weight:700}
+.reactor .timer{color:var(--muted);font-size:13px;margin-top:10px;font-variant-numeric:tabular-nums;letter-spacing:1px;padding:4px 10px;border-radius:20px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06)}
+.reactor.mining{--speed:1.6}
+.reactor.mining .r-glow{opacity:1;animation:breathe 2.4s ease-in-out infinite}
+.reactor.mining .r-conic{opacity:1}
+.reactor.mining .r-orbit{opacity:1}
+.reactor.mining .r-core{box-shadow:inset 0 0 45px rgba(0,229,255,.35),0 0 40px rgba(0,229,255,.25),0 0 0 1px rgba(0,229,255,.3)}
+.reactor.ready{--c1:var(--gold);--c2:#FF8A1C;--speed:2.2}
+.reactor.ready .r-glow{opacity:1;background:radial-gradient(circle,rgba(255,200,61,.4),rgba(255,138,28,.15) 50%,transparent 70%);animation:breathe 1.4s ease-in-out infinite}
+.reactor.ready .r-conic,.reactor.ready .r-orbit{opacity:1}
+.reactor.ready .mined{color:var(--gold);text-shadow:0 0 22px rgba(255,200,61,.8)}
+.reactor.ready .r-core{box-shadow:inset 0 0 45px rgba(255,200,61,.35),0 0 50px rgba(255,200,61,.3)}
+.sparks{position:absolute;inset:0;pointer-events:none}
+.spark{position:absolute;left:50%;top:50%;width:4px;height:4px;border-radius:50%;background:#fff;
+ box-shadow:0 0 8px var(--c, #00E5FF),0 0 16px var(--c, #00E5FF);animation:fly var(--t,1.4s) cubic-bezier(.15,.7,.3,1) forwards}
+@keyframes fly{0%{transform:translate(var(--x0),var(--y0)) scale(1);opacity:1}100%{transform:translate(var(--x1),var(--y1)) scale(.2);opacity:0}}
+
+.state{font-size:13px;color:var(--muted);margin-bottom:16px;min-height:18px;font-weight:600;letter-spacing:.5px}
+.state b{color:var(--gold)}
+.state .on{color:var(--ok)}
+.state .on::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:7px;vertical-align:1px;box-shadow:0 0 10px var(--ok);animation:blink 1.2s infinite}
+@keyframes blink{50%{opacity:.25}}
+
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}
+.stats.two{grid-template-columns:1fr 1fr}
+.stat{background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06);border-radius:16px;padding:12px 8px;text-align:center}
+.stat .v{font-family:var(--display);font-size:16px;font-weight:800;margin-top:6px;overflow-wrap:anywhere}
+.stat .label{font-size:9.5px;letter-spacing:1.5px}
+
+/* daily */
+.daily .head{display:flex;align-items:center;gap:12px}
+.daily .flame{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;font-size:22px;flex:none;background:linear-gradient(145deg,rgba(255,138,28,.25),rgba(255,61,203,.15));border:1px solid rgba(255,138,28,.35)}
+.daily .txt{flex:1;min-width:0}
+.daily .ttl{font-weight:800;font-size:15px}
+.daily .sm{color:var(--muted);font-size:12px;margin-top:3px}
+.days{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:14px}
+.day{height:34px;border-radius:10px;display:grid;place-items:center;font-size:11px;font-weight:800;color:var(--dim);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);font-family:var(--display)}
+.day.got{color:#fff;background:linear-gradient(145deg,#FF8A1C,var(--pink));border-color:transparent;box-shadow:0 0 14px -2px rgba(255,61,203,.6)}
+.day.next{color:var(--gold);border-color:var(--gold);animation:pulse-day 1.4s ease-in-out infinite}
+@keyframes pulse-day{50%{box-shadow:0 0 14px rgba(255,200,61,.6)}}
+
+/* tasks */
+.sec-title{font-family:var(--display);font-size:20px;font-weight:800;letter-spacing:1px;margin:2px 0 4px}
+.sec-sub{color:var(--muted);font-size:13px;margin:0 0 6px}
+.task{display:flex;align-items:center;gap:12px;padding:14px;border-radius:18px;margin-top:10px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06)}
+.task.claim{border-color:rgba(0,229,255,.45);box-shadow:0 0 22px -8px rgba(0,229,255,.7)}
+.task .ic{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;font-size:20px;flex:none;background:linear-gradient(145deg,rgba(47,123,255,.3),rgba(139,92,255,.2));border:1px solid rgba(139,92,255,.3)}
+.task .txt{flex:1;min-width:0}
+.task .ttl{font-size:14px;font-weight:700}
+.task .sm{color:var(--cyan);font-size:12px;margin-top:3px;font-weight:600}
+.bar{height:6px;border-radius:6px;background:rgba(255,255,255,.07);overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,var(--blue),var(--cyan),var(--violet));box-shadow:0 0 10px var(--cyan)}
+
+/* friends */
+.invite-hero{text-align:center;padding:26px 20px}
+.big-pct{font-family:var(--display);font-size:64px;font-weight:900;line-height:1;margin:10px 0 6px}
+.reflink{display:flex;gap:8px;align-items:center;background:rgba(0,0,0,.25);border:1px solid var(--edge);border-radius:14px;padding:6px 6px 6px 14px;margin-top:16px}
+.reflink span{flex:1;min-width:0;font-size:12px;color:var(--cyan);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+.reflink button{border:0;border-radius:10px;background:rgba(255,255,255,.08);padding:10px 14px;font-size:12px;font-weight:700}
+.invite-hero .cta{margin-top:12px}
 .hint{color:var(--muted);font-size:13px;line-height:1.6;margin:8px 0 0}
 
 .list{list-style:none;margin:0;padding:0}
-.list li{display:flex;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid #1a2c45;font-size:14px}
+.list li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:13px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:14px}
 .list li:last-child{border-bottom:0}
+.list .n{font-weight:600}
 .list .t{color:var(--muted);font-size:12px;margin-top:2px}
-.list .amt{color:var(--ok);font-weight:700;white-space:nowrap}
-.empty{color:var(--dim);text-align:center;padding:18px 0;font-size:13px}
+.list .amt{color:var(--ok);font-weight:800;white-space:nowrap;font-family:var(--display);font-size:13px}
+.list .amt.neg{color:var(--err)}
+.empty{color:var(--dim);text-align:center;padding:22px 0;font-size:13px;justify-content:center!important}
+.back{display:inline-flex;align-items:center;gap:6px;background:none;border:0;color:var(--cyan);font-weight:700;font-size:13px;padding:0 0 10px}
+
+/* bottom nav */
+.nav{
+ position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));z-index:5;
+ width:calc(100% - 32px);max-width:420px;height:var(--nav-h);display:flex;padding:8px;border-radius:24px
+}
+.nav button{flex:1;border:0;background:none;border-radius:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:var(--dim);font-size:11px;font-weight:700;letter-spacing:.5px;transition:color .2s,background .2s;position:relative}
+.nav button svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:filter .2s}
+.nav button.on{color:#fff;background:linear-gradient(160deg,rgba(0,229,255,.18),rgba(139,92,255,.18))}
+.nav button.on svg{stroke:var(--cyan);filter:drop-shadow(0 0 8px var(--cyan))}
+.nav .dot{position:absolute;top:8px;right:calc(50% - 20px);width:8px;height:8px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold)}
+
+.pane{animation:rise .35s ease both}
 
 .toast{
- position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);
- background:#17304f;border:1px solid var(--line);color:#fff;padding:12px 18px;border-radius:12px;
- font-size:14px;max-width:calc(100% - 32px);box-shadow:0 10px 30px #0008;z-index:10
+ position:fixed;left:50%;top:calc(16px + env(safe-area-inset-top));transform:translateX(-50%);
+ padding:13px 18px;border-radius:16px;font-size:14px;font-weight:600;max-width:calc(100% - 32px);z-index:20;
+ background:rgba(16,22,48,.9);border:1px solid var(--edge-hi);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+ box-shadow:0 10px 40px rgba(0,0,0,.6),0 0 30px -10px var(--cyan);animation:drop .35s cubic-bezier(.2,.8,.2,1)
 }
-.toast.err{border-color:var(--err)}
-.spinner{display:inline-block;width:14px;height:14px;border:2px solid #fff6;border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite;vertical-align:-2px;margin-right:6px}
-@keyframes spin{to{transform:rotate(360deg)}}
+.toast.err{border-color:var(--err);box-shadow:0 10px 40px rgba(0,0,0,.6),0 0 30px -10px var(--err)}
+@keyframes drop{from{opacity:0;transform:translate(-50%,-14px)}to{opacity:1;transform:translate(-50%,0)}}
+.spinner{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite;vertical-align:-2px;margin-right:8px}
+.burst{position:fixed;inset:0;pointer-events:none;z-index:15}
+
+@media (prefers-reduced-motion:reduce){
+ *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition:none!important}
+}
 </style>
 </head>
 
 <body>
+<div class="aurora"><i></i><i></i><i></i></div>
+<div class="grid-floor"></div>
+<canvas id="fx"></canvas>
+
 <main class="app">
 
  <!-- Landing / connect -->
  <section class="landing" id="landing">
-  <div class="logo">V</div>
-  <h1>VOLTIX</h1>
-  <div class="sub">MINING ECOSYSTEM</div>
-  <div class="tag">● NEXT GENERATION MINING</div>
-  <h2>Mine. Earn. Grow.</h2>
-  <p class="desc">Welcome to VOLTIX.<br>Connect your TON wallet to enter the ecosystem.</p>
-  <button class="primary" id="connect">Connect TON Wallet</button>
-  <p class="note">SECURE CONNECTION · TON CONNECT</p>
+  <div class="core">
+   <div class="halo"></div>
+   <div class="ring a"></div>
+   <div class="ring b"></div>
+   <div class="ring c"></div>
+   <div class="sat"><i></i></div>
+   <div class="sat s2"><i></i></div>
+   <div class="orb">
+    <svg viewBox="0 0 24 24"><path d="M13.5 2 4.5 13.5h6.2L9.8 22l9.7-12.2h-6.4L13.5 2z" fill="#fff"/></svg>
+   </div>
+  </div>
+  <div class="brand grad-text">VOLTIX</div>
+  <div class="tagline">MINING ON TON</div>
+  <div class="headline">Your wallet is a <em>power plant</em>.<br>Start it up.</div>
+  <p class="desc">Mine VOLTIX every 24 hours, keep your streak alive and grow your network of miners.</p>
+  <div class="feats">
+   <div class="feat glass"><div class="ic">⚡</div><div class="v">24H</div><div class="t">mining cycles</div></div>
+   <div class="feat glass"><div class="ic">👥</div><div class="v">+10%</div><div class="t">from every friend</div></div>
+   <div class="feat glass"><div class="ic">🔥</div><div class="v">×7</div><div class="t">daily streak</div></div>
+  </div>
+  <button class="cta" id="connect">Connect TON Wallet</button>
+  <p class="note"><b>●</b> SECURE · TON CONNECT · NO FEES</p>
   <div class="footer">
    POWERED BY TON BLOCKCHAIN<br><br>
    <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>
@@ -159,110 +344,136 @@ h2{font-size:25px;margin:30px 0 12px}
  </section>
 
  <!-- Dashboard -->
- <section class="hidden" id="dashboard">
+ <section class="dash hidden" id="dashboard">
   <div class="top">
-   <div class="mini-logo">V</div>
+   <div class="mini-logo"><svg viewBox="0 0 24 24"><path d="M13.5 2 4.5 13.5h6.2L9.8 22l9.7-12.2h-6.4L13.5 2z" fill="#fff"/></svg></div>
    <div class="who">
-    <div class="name">VOLTIX</div>
+    <div class="name grad-text">VOLTIX</div>
     <div class="addr" id="addr"></div>
    </div>
-   <button class="ghost" id="disconnect">Disconnect</button>
+   <button class="icon-btn" id="disconnect" title="Disconnect" aria-label="Disconnect">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+   </button>
   </div>
 
-  <div class="card">
+  <div class="glass card balance-card">
    <div class="bal-row">
-    <div class="label">Balance</div>
+    <div class="label">Total balance</div>
     <button class="link" data-tab="history">History →</button>
    </div>
-   <div class="balance"><span id="balance">0.00</span><small>VOLTIX</small></div>
+   <div class="balance"><span class="num" id="balance">0.00</span><span class="cur">VOLTIX</span></div>
+   <div class="live" id="live"></div>
   </div>
 
-  <div class="tabs">
-   <button class="on" data-tab="mine">Mine</button>
-   <button data-tab="boost">Boost</button>
-   <button data-tab="tasks">Tasks</button>
-   <button data-tab="friends">Friends</button>
-   <button data-tab="top">Top</button>
-  </div>
-
-  <div class="card miner" data-pane="mine">
-   <div class="ring" id="ring">
-    <svg viewBox="0 0 220 220">
-     <defs>
-      <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
-       <stop offset="0" stop-color="#1679E9"/><stop offset="1" stop-color="#38B7FF"/>
-      </linearGradient>
-     </defs>
-     <circle class="bg" cx="110" cy="110" r="95"/>
-     <circle class="fg" id="ringFg" cx="110" cy="110" r="95"/>
-    </svg>
-    <div class="center">
-     <div class="mined" id="mined">0.0000</div>
-     <div class="unit">VOLTIX</div>
-     <div class="timer" id="timer">--:--:--</div>
+  <!-- Mine -->
+  <div class="pane" data-pane="mine">
+   <div class="glass card miner">
+    <div class="reactor idle" id="ring">
+     <div class="r-glow"></div>
+     <div class="r-dash"></div>
+     <div class="r-ticks"></div>
+     <div class="r-orbit"><i></i></div>
+     <div class="r-orbit o2"><i></i></div>
+     <svg class="prog" viewBox="0 0 220 220">
+      <defs>
+       <linearGradient id="rgrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#00E5FF"/><stop offset=".55" stop-color="#2F7BFF"/><stop offset="1" stop-color="#8B5CFF"/>
+       </linearGradient>
+       <filter id="rglow" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+       </filter>
+      </defs>
+      <circle class="track" cx="110" cy="110" r="96"/>
+      <circle class="fg" id="ringFg" cx="110" cy="110" r="96"/>
+     </svg>
+     <div class="r-conic"></div>
+     <div class="r-conic b"></div>
+     <div class="r-core"></div>
+     <div class="center">
+      <div class="mined" id="mined">0.0000</div>
+      <div class="unit">VOLTIX</div>
+      <div class="timer" id="timer">--:--:--</div>
+     </div>
+     <div class="sparks" id="sparks"></div>
     </div>
-   </div>
-   <div class="state" id="state"></div>
-   <button class="primary" id="mineBtn">Start Mining</button>
-   <p class="hint" id="rate"></p>
-   <div class="daily">
-    <div class="txt">
-     <div class="ttl">Daily bonus</div>
-     <div class="sm" id="dailyInfo"></div>
-    </div>
-    <button class="pill" id="checkinBtn">Claim</button>
-   </div>
-  </div>
-
-  <div class="card hidden" data-pane="boost" style="text-align:center">
-   <div class="label">Miner level</div>
-   <div class="lvl"><span id="lvl">1</span><small id="lvlMax"> / 10</small></div>
-   <div class="hint" id="lvlReward"></div>
-   <div class="bar"><i id="lvlBar"></i></div>
-   <div id="nextBox">
+    <div class="state" id="state"></div>
+    <button class="cta" id="mineBtn">Start Mining</button>
     <div class="stats">
-     <div class="stat"><div class="label">Next reward</div><div class="v" id="nextReward">0</div></div>
-     <div class="stat"><div class="label">Price</div><div class="v" id="nextCost">0</div></div>
+     <div class="stat"><div class="label">Per cycle</div><div class="v" id="sReward">0</div></div>
+     <div class="stat"><div class="label">Per hour</div><div class="v" id="sHour">0</div></div>
+     <div class="stat"><div class="label">Friends</div><div class="v" id="sFriends">+10%</div></div>
     </div>
-    <button class="primary" id="upgradeBtn">Upgrade</button>
    </div>
-   <p class="hint">Upgrades apply to your next mining session.</p>
-  </div>
 
-  <div class="card hidden" data-pane="tasks">
-   <div class="label">Tasks</div>
-   <div id="taskList"></div>
-  </div>
-
-  <div class="card hidden" data-pane="top">
-   <div class="label">Top miners</div>
-   <p class="hint" id="myRank"></p>
-   <ul class="list" id="topList"></ul>
-  </div>
-
-  <div class="card hidden" data-pane="friends">
-   <div class="label">Invite friends</div>
-   <p class="hint" id="refHint"></p>
-   <div class="stats">
-    <div class="stat"><div class="label">Friends</div><div class="v" id="refCount">0</div></div>
-    <div class="stat"><div class="label">Earned</div><div class="v" id="refEarned">0</div></div>
+   <div class="glass card daily">
+    <div class="head">
+     <div class="flame">🔥</div>
+     <div class="txt">
+      <div class="ttl">Daily bonus</div>
+      <div class="sm" id="dailyInfo"></div>
+     </div>
+     <button class="pill" id="checkinBtn">Claim</button>
+    </div>
+    <div class="days" id="days"></div>
    </div>
-   <div class="reflink"><span id="refLink"></span><button id="copyRef">Copy</button></div>
-   <button class="share" id="shareRef">Share invite</button>
-   <ul class="list" id="refList" style="margin-top:12px"></ul>
   </div>
 
-  <div class="card hidden" data-pane="history">
-   <div class="label">Transactions</div>
-   <ul class="list" id="txList"></ul>
+  <!-- Tasks -->
+  <div class="pane hidden" data-pane="tasks">
+   <div class="glass card">
+    <div class="sec-title grad-text">MISSIONS</div>
+    <p class="sec-sub">Complete missions to earn bonus VOLTIX.</p>
+    <div id="taskList"></div>
+   </div>
   </div>
 
-  <div class="footer" style="text-align:center;margin-top:30px">
+  <!-- Friends -->
+  <div class="pane hidden" data-pane="friends">
+   <div class="glass card invite-hero">
+    <div class="label">Referral reward</div>
+    <div class="big-pct grad-text" id="refPct">10%</div>
+    <p class="hint" id="refHint"></p>
+    <div class="stats two">
+     <div class="stat"><div class="label">Friends</div><div class="v" id="refCount">0</div></div>
+     <div class="stat"><div class="label">Earned</div><div class="v" id="refEarned">0</div></div>
+    </div>
+    <div class="reflink"><span id="refLink"></span><button id="copyRef">Copy</button></div>
+    <button class="cta" id="shareRef">Invite friends</button>
+   </div>
+   <div class="glass card">
+    <div class="label">Your team</div>
+    <ul class="list" id="refList" style="margin-top:6px"></ul>
+   </div>
+  </div>
+
+  <!-- History -->
+  <div class="pane hidden" data-pane="history">
+   <div class="glass card">
+    <button class="back" data-tab="mine">← Back</button>
+    <div class="label">Transactions</div>
+    <ul class="list" id="txList" style="margin-top:6px"></ul>
+   </div>
+  </div>
+
+  <div class="footer" style="margin-top:24px">
    <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>
   </div>
  </section>
 </main>
 
+<nav class="nav glass hidden" id="nav">
+ <button class="on" data-tab="mine">
+  <svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>Mine
+ </button>
+ <button data-tab="tasks">
+  <svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>Missions<span class="dot hidden" id="taskDot"></span>
+ </button>
+ <button data-tab="friends">
+  <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Friends
+ </button>
+</nav>
+
+<div class="burst" id="burst"></div>
 <div class="toast hidden" id="toast"></div>
 
 <script src="https://unpkg.com/@tonconnect/ui@2.0.9/dist/tonconnect-ui.min.js"></script>
@@ -274,7 +485,11 @@ const TELEGRAM_APP_URL = "https://t.me/VoltixMiningBot/VTX";
 const $ = id => document.getElementById(id);
 const tg = window.Telegram && window.Telegram.WebApp;
 const inTelegram = !!(tg && tg.initData);
-if (inTelegram) { tg.ready(); tg.expand(); }
+if (inTelegram) {
+ tg.ready(); tg.expand();
+ try { tg.setHeaderColor("#05060F"); tg.setBackgroundColor("#05060F"); } catch {}
+}
+const reduceMotion = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const TOKEN_KEY = "voltix_token";
 const REF_KEY = "voltix_ref";
@@ -295,6 +510,46 @@ let token = store.get(TOKEN_KEY);
 let me = null;
 let clockOffset = 0;   // server time - local time, seconds
 let busy = false;
+let activeTab = "mine";
+
+// ---------------------------------------------------------------- background energy field
+(() => {
+ const c = $("fx"), ctx = c.getContext("2d");
+ let w, h, dpr, parts = [];
+ const COLORS = ["0,229,255", "139,92,255", "47,123,255", "255,61,203"];
+ function resize(){
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  w = c.width = innerWidth * dpr; h = c.height = innerHeight * dpr;
+  const n = reduceMotion ? 0 : Math.min(70, Math.round(innerWidth * innerHeight / 14000));
+  parts = Array.from({ length: n }, () => spawn(true));
+ }
+ function spawn(any){
+  return {
+   x: Math.random() * w, y: any ? Math.random() * h : h + 10 * dpr,
+   r: (Math.random() * 1.6 + .4) * dpr, vy: -(Math.random() * .35 + .08) * dpr,
+   vx: (Math.random() - .5) * .15 * dpr, a: Math.random() * .6 + .2,
+   c: COLORS[Math.random() * COLORS.length | 0], p: Math.random() * Math.PI * 2
+  };
+ }
+ function frame(){
+  if (document.visibilityState === "visible") {
+   ctx.clearRect(0, 0, w, h);
+   ctx.globalCompositeOperation = "lighter";
+   const boost = document.body.classList.contains("mining-on") ? 2.2 : 1;
+   for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    p.x += p.vx; p.y += p.vy * boost; p.p += .03;
+    if (p.y < -10) parts[i] = spawn(false);
+    const a = p.a * (.6 + .4 * Math.sin(p.p));
+    ctx.beginPath(); ctx.fillStyle = `rgba(${p.c},${a * .18})`; ctx.arc(p.x, p.y, p.r * 4, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.fillStyle = `rgba(${p.c},${a})`; ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+   }
+  }
+  requestAnimationFrame(frame);
+ }
+ addEventListener("resize", resize);
+ resize(); frame();
+})();
 
 // ---------------------------------------------------------------- UI helpers
 let toastTimer;
@@ -303,11 +558,17 @@ function toast(text, isError){
  t.textContent = text;
  t.classList.toggle("err", !!isError);
  t.classList.remove("hidden");
+ t.style.animation = "none"; void t.offsetWidth; t.style.animation = "";
  clearTimeout(toastTimer);
  toastTimer = setTimeout(() => t.classList.add("hidden"), 3200);
- if (inTelegram && tg.HapticFeedback) {
-  tg.HapticFeedback.notificationOccurred(isError ? "error" : "success");
- }
+ haptic(isError ? "error" : "success");
+}
+function haptic(kind){
+ if (!inTelegram || !tg.HapticFeedback) return;
+ try {
+  if (kind === "light" || kind === "heavy" || kind === "medium") tg.HapticFeedback.impactOccurred(kind);
+  else tg.HapticFeedback.notificationOccurred(kind);
+ } catch {}
 }
 
 const fmt = (v, d = 2) => Number(v).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -320,16 +581,82 @@ function hms(sec){
  return `${p(Math.floor(sec / 3600))}:${p(Math.floor(sec % 3600 / 60))}:${p(sec % 60)}`;
 }
 
-function showLanding(){ $("landing").classList.remove("hidden"); $("dashboard").classList.add("hidden"); }
-function showDashboard(){ $("landing").classList.add("hidden"); $("dashboard").classList.remove("hidden"); }
+// Animated number roll for the balance.
+let shownBalance = null;
+function setBalance(value){
+ const el = $("balance");
+ const to = Number(value);
+ if (shownBalance === null || reduceMotion) { shownBalance = to; el.textContent = fmt(to, 2); return; }
+ const from = shownBalance;
+ if (from === to) return;
+ shownBalance = to;
+ const start = performance.now(), dur = 1100;
+ if (to > from) { el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); }
+ (function step(now){
+  const k = Math.min(1, (now - start) / dur), e = 1 - Math.pow(1 - k, 3);
+  el.textContent = fmt(from + (to - from) * e, 2);
+  if (k < 1) requestAnimationFrame(step);
+ })(start);
+}
+
+// Particle burst from an element (claims, bonuses).
+function burst(fromEl, color = "#FFC83D", count = 34){
+ if (reduceMotion || !fromEl) return;
+ const r = fromEl.getBoundingClientRect(), box = $("burst");
+ const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+ for (let i = 0; i < count; i++) {
+  const s = document.createElement("span");
+  s.className = "spark";
+  const ang = Math.random() * Math.PI * 2, dist = 60 + Math.random() * 140;
+  s.style.left = cx + "px"; s.style.top = cy + "px";
+  s.style.setProperty("--c", Math.random() < .35 ? "#00E5FF" : color);
+  s.style.setProperty("--x0", "0px"); s.style.setProperty("--y0", "0px");
+  s.style.setProperty("--x1", Math.cos(ang) * dist + "px");
+  s.style.setProperty("--y1", Math.sin(ang) * dist + "px");
+  s.style.setProperty("--t", (0.7 + Math.random() * 0.7) + "s");
+  s.style.width = s.style.height = (3 + Math.random() * 4) + "px";
+  s.addEventListener("animationend", () => s.remove());
+  box.appendChild(s);
+ }
+}
+
+// Energy sparks around the reactor while it is running.
+function reactorSpark(){
+ const box = $("sparks");
+ if (reduceMotion || document.visibilityState !== "visible" || box.childElementCount > 24) return;
+ const size = box.clientWidth, R = size * .44;
+ const ang = Math.random() * Math.PI * 2, out = R + 20 + Math.random() * 40;
+ const s = document.createElement("span");
+ s.className = "spark";
+ s.style.setProperty("--c", $("ring").classList.contains("ready") ? "#FFC83D" : (Math.random() < .5 ? "#00E5FF" : "#8B5CFF"));
+ s.style.setProperty("--x0", Math.cos(ang) * R + "px"); s.style.setProperty("--y0", Math.sin(ang) * R + "px");
+ s.style.setProperty("--x1", Math.cos(ang) * out + "px"); s.style.setProperty("--y1", Math.sin(ang) * out + "px");
+ s.addEventListener("animationend", () => s.remove());
+ box.appendChild(s);
+}
+setInterval(() => {
+ const ring = $("ring");
+ if (activeTab === "mine" && (ring.classList.contains("mining") || ring.classList.contains("ready"))) reactorSpark();
+}, 180);
+
+function showLanding(){
+ $("landing").classList.remove("hidden"); $("dashboard").classList.add("hidden");
+ $("nav").classList.add("hidden"); document.body.classList.remove("has-nav", "mining-on");
+}
+function showDashboard(){
+ $("landing").classList.add("hidden"); $("dashboard").classList.remove("hidden");
+ $("nav").classList.remove("hidden"); document.body.classList.add("has-nav");
+}
 
 function openTab(tab){
- document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x.dataset.tab === tab));
+ activeTab = tab;
+ document.querySelectorAll(".nav button").forEach(x => x.classList.toggle("on", x.dataset.tab === tab));
  document.querySelectorAll("[data-pane]").forEach(p => p.classList.toggle("hidden", p.dataset.pane !== tab));
  if (tab === "history") loadHistory();
  if (tab === "friends") loadReferrals();
  if (tab === "tasks") loadTasks();
- if (tab === "top") loadTop();
+ haptic("light");
+ window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
 }
 document.querySelectorAll("button[data-tab]").forEach(b => b.addEventListener("click", () => openTab(b.dataset.tab)));
 
@@ -361,44 +688,39 @@ async function api(path, opts = {}){
 }
 
 // ---------------------------------------------------------------- rendering
-const RING_LEN = 2 * Math.PI * 95;
+const RING_LEN = 2 * Math.PI * 96;
 $("ringFg").style.strokeDasharray = RING_LEN;
+$("ringFg").style.strokeDashoffset = RING_LEN;
+
+const cycleReward = () => Number((me.miner && me.miner.reward) || me.config.reward);
 
 function render(){
  if (!me) return;
  $("addr").textContent = short(me.wallet_friendly);
- $("balance").textContent = fmt(me.balance, 2);
- $("rate").textContent =
-  `Earn ${fmt(me.config.reward, 0)} VOLTIX every ${Math.round(me.config.duration / 3600)} hours. Come back to claim and start again.`;
+ setBalance(me.balance);
+ const reward = cycleReward(), hours = me.config.duration / 3600;
+ $("sReward").textContent = fmt(reward, 0);
+ $("sHour").textContent = fmt(reward / hours, 2);
+ $("sFriends").textContent = `+${me.config.referral_percent}%`;
  renderReferralInfo();
- renderMiner();
  renderCheckin();
  tick();
-}
-
-function renderMiner(){
- const m = me.miner;
- $("lvl").textContent = m.level;
- $("lvlMax").textContent = " / " + m.max_level;
- $("lvlReward").textContent = `Current reward: ${fmt(m.reward, 0)} VOLTIX per session`;
- $("lvlBar").style.width = (m.level / m.max_level * 100) + "%";
- $("nextBox").classList.toggle("hidden", !m.next);
- if (m.next) {
-  $("nextReward").textContent = fmt(m.next.reward, 0);
-  $("nextCost").textContent = fmt(m.next.cost, 0);
-  const afford = Number(me.balance) >= Number(m.next.cost);
-  $("upgradeBtn").disabled = !afford;
-  $("upgradeBtn").textContent = afford
-   ? `Upgrade to level ${m.next.level}`
-   : `Need ${fmt(Number(m.next.cost) - Number(me.balance), 2)} more`;
- }
 }
 
 function renderCheckin(){
  const c = me.checkin;
  const btn = $("checkinBtn");
+ const got = c.available ? Math.min(c.streak, 6) : Math.min(c.streak, 7);
+ const days = $("days");
+ days.innerHTML = "";
+ for (let d = 1; d <= 7; d++) {
+  const el = document.createElement("div");
+  el.className = "day" + (d <= got ? " got" : "") + (c.available && d === got + 1 ? " next" : "");
+  el.textContent = d <= got ? "✓" : "D" + d;
+  days.appendChild(el);
+ }
  if (c.available) {
-  $("dailyInfo").textContent = `Day ${Math.min(c.streak + 1, 7)} streak · +${fmt(c.next_bonus, 0)} VOLTIX`;
+  $("dailyInfo").textContent = `Day ${Math.min(c.streak + 1, 7)} · +${fmt(c.next_bonus, 0)} VOLTIX ready`;
   btn.textContent = "Claim";
   btn.classList.remove("done");
   btn.disabled = false;
@@ -414,7 +736,7 @@ function tick(){
  if (!me) return;
  const m = me.mining;
  const btn = $("mineBtn");
- let progress = 0, mined = 0, timer = "--:--:--", state = "";
+ let progress = 0, mined = 0, timer = "--:--:--", state = "", live = "";
  let st = m.state;
 
  if (st === "mining") {
@@ -424,19 +746,26 @@ function tick(){
   mined = Number(m.reward) * progress;
   timer = hms(m.ends_at - t);
   if (progress >= 1) st = "ready";
-  state = "⚡ Mining in progress";
+  state = '<span class="on">MINING ACTIVE</span>';
+  live = `<b>+${mined.toFixed(4)}</b> mining now`;
  }
  if (st === "ready") {
-  progress = 1; mined = Number(m.reward); timer = "00:00:00";
-  state = "<b>✓ Mining complete — claim your reward</b>";
+  progress = 1; mined = Number(m.reward); timer = "READY";
+  state = "<b>⚡ Cycle complete — claim your VOLTIX</b>";
+  live = `<b>+${fmt(mined, 2)}</b> ready to claim`;
  }
- if (st === "idle") state = "Miner is idle";
+ if (st === "idle") { state = "Reactor offline — start a new cycle"; timer = "24:00:00"; }
 
+ const ring = $("ring");
+ ring.classList.toggle("mining", st === "mining");
+ ring.classList.toggle("ready", st === "ready");
+ ring.classList.toggle("idle", st === "idle");
+ document.body.classList.toggle("mining-on", st === "mining" || st === "ready");
  $("ringFg").style.strokeDashoffset = RING_LEN * (1 - progress);
- $("ring").classList.toggle("active", st === "mining");
  $("mined").textContent = mined.toFixed(4);
  $("timer").textContent = timer;
  $("state").innerHTML = state;
+ $("live").innerHTML = live;
 
  if (!me.checkin.available) {
   if (serverNow() >= me.checkin.next_reset) refreshMe();
@@ -445,7 +774,8 @@ function tick(){
 
  if (!busy) {
   btn.disabled = st === "mining";
-  btn.textContent = st === "idle" ? "Start Mining" : st === "ready" ? `Claim ${fmt(m.reward, 0)} VOLTIX` : "Mining…";
+  btn.classList.toggle("ready", st === "ready");
+  btn.textContent = st === "idle" ? "⚡ Start Mining" : st === "ready" ? `Claim ${fmt(m.reward, 0)} VOLTIX` : "Mining in progress…";
  }
 }
 setInterval(tick, 1000);
@@ -458,8 +788,9 @@ function referralLink(){
 }
 
 function renderReferralInfo(){
+ $("refPct").textContent = `+${me.config.referral_percent}%`;
  $("refHint").textContent =
-  `Get ${me.config.referral_percent}% of everything your friends mine. They join with your link and connect a wallet.`;
+  `of everything your friends mine — forever. They join with your link and connect a wallet.`;
  $("refCount").textContent = me.referrals;
  $("refEarned").textContent = fmt(me.referral_earned, 2);
  $("refLink").textContent = referralLink();
@@ -490,14 +821,17 @@ $("mineBtn").addEventListener("click", async () => {
  const btn = $("mineBtn");
  busy = true; btn.disabled = true;
  btn.innerHTML = '<span class="spinner"></span>Please wait';
+ haptic("medium");
  try {
   if (me.mining.state === "idle") {
    const r = await api("/api/mining/start", { method: "POST" });
    me.mining = r.mining;
    clockOffset = r.mining.now - Date.now() / 1000;
-   toast("Mining started");
+   burst($("ring"), "#00E5FF", 40);
+   toast("⚡ Reactor online — mining started");
   } else {
    const r = await api("/api/mining/claim", { method: "POST" });
+   burst(btn, "#FFC83D", 50);
    applyUser(r.user);
    toast(`+${fmt(r.reward, 2)} VOLTIX claimed`);
   }
@@ -510,62 +844,50 @@ $("mineBtn").addEventListener("click", async () => {
  }
 });
 
-$("checkinBtn").addEventListener("click", e => withButton(e.currentTarget, async () => {
- const r = await api("/api/checkin", { method: "POST" });
- applyUser(r.user);
- toast(`+${fmt(r.bonus, 0)} VOLTIX · day ${r.streak}`);
-}));
+$("checkinBtn").addEventListener("click", e => {
+ const btn = e.currentTarget;
+ withButton(btn, async () => {
+  const r = await api("/api/checkin", { method: "POST" });
+  burst(btn, "#FF8A1C", 30);
+  applyUser(r.user);
+  toast(`🔥 +${fmt(r.bonus, 0)} VOLTIX · day ${r.streak}`);
+ });
+});
 
-$("upgradeBtn").addEventListener("click", e => withButton(e.currentTarget, async () => {
- const r = await api("/api/upgrade", { method: "POST" });
- applyUser(r.user);
- toast(r.message);
-}));
-
+const TASK_ICONS = { first: "⛏", invite: "👥", streak: "🔥" };
 async function loadTasks(){
  const box = $("taskList");
  try {
   const { tasks } = await api("/api/tasks");
   box.innerHTML = "";
+  let claimable = 0;
   for (const t of tasks) {
    const row = document.createElement("div");
-   row.className = "task";
-   row.innerHTML = `<div class="txt"><div class="ttl"></div><div class="sm"></div><div class="bar"><i></i></div></div><button class="pill"></button>`;
+   row.className = "task" + (t.claimable && !t.claimed ? " claim" : "");
+   row.innerHTML = `<div class="ic"></div><div class="txt"><div class="ttl"></div><div class="sm"></div><div class="bar"><i></i></div></div><button class="pill"></button>`;
+   row.querySelector(".ic").textContent = TASK_ICONS[t.id.split("_")[0]] || "⚡";
    row.querySelector(".ttl").textContent = t.title;
-   row.querySelector(".sm").textContent = `+${fmt(t.reward, 0)} VOLTIX · ${t.progress}/${t.goal}`;
-   row.querySelector(".bar i").style.width = (t.progress / t.goal * 100) + "%";
+   row.querySelector(".sm").textContent = `+${fmt(t.reward, 0)} VOLTIX · ${Math.min(t.progress, t.goal)}/${t.goal}`;
+   row.querySelector(".bar i").style.width = Math.min(100, t.progress / t.goal * 100) + "%";
    const b = row.querySelector("button");
    if (t.claimed) { b.textContent = "Done"; b.classList.add("done"); b.disabled = true; }
    else if (t.claimable) {
+    claimable++;
     b.textContent = "Claim";
     b.addEventListener("click", () => withButton(b, async () => {
      const r = await api("/api/tasks/claim", { method: "POST", body: { task_id: t.id } });
+     burst(b, "#00E5FF", 30);
      applyUser(r.user);
      toast(`+${fmt(r.reward, 0)} VOLTIX`);
      loadTasks();
     }));
-   } else { b.textContent = "Go"; b.classList.add("done"); b.disabled = true; }
+   } else if (t.id.startsWith("invite")) {
+    b.textContent = "Invite";
+    b.addEventListener("click", () => openTab("friends"));
+   } else { b.textContent = "Locked"; b.classList.add("done"); b.disabled = true; }
    box.appendChild(row);
   }
- } catch (e) { toast(e.message, true); }
-}
-
-async function loadTop(){
- const list = $("topList");
- try {
-  const { top, my_rank } = await api("/api/leaderboard");
-  $("myRank").textContent = `Your place: #${my_rank}`;
-  list.innerHTML = "";
-  for (const u of top) {
-   const li = document.createElement("li");
-   if (u.me) li.className = "me";
-   li.innerHTML = `<div><span class="rank"></span><span class="n"></span><div class="t"></div></div><div class="amt"></div>`;
-   li.querySelector(".rank").textContent = "#" + u.rank;
-   li.querySelector(".n").textContent = u.me ? "You" : short(u.wallet);
-   li.querySelector(".t").textContent = "Level " + u.level;
-   li.querySelector(".amt").textContent = fmt(u.balance, 0);
-   list.appendChild(li);
-  }
+  $("taskDot").classList.toggle("hidden", !claimable);
  } catch (e) { toast(e.message, true); }
 }
 
@@ -576,7 +898,7 @@ $("copyRef").addEventListener("click", async () => {
 
 $("shareRef").addEventListener("click", () => {
  const link = referralLink();
- const text = "Join me on VOLTIX — mine VOLTIX every day!";
+ const text = "⚡ Join me on VOLTIX — mine VOLTIX every day on TON!";
  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
  if (inTelegram) tg.openTelegramLink(shareUrl);
  else if (navigator.share) navigator.share({ title: "VOLTIX", text, url: link }).catch(() => {});
@@ -590,8 +912,8 @@ async function loadHistory(){
   list.innerHTML = "";
   if (!transactions.length) { list.innerHTML = '<li class="empty">No transactions yet</li>'; return; }
   const names = {
-   mining_reward: "Mining reward", referral_bonus: "Referral bonus",
-   daily_bonus: "Daily bonus", task_reward: "Task reward", upgrade: "Miner upgrade"
+   mining_reward: "⛏ Mining reward", referral_bonus: "👥 Referral bonus",
+   daily_bonus: "🔥 Daily bonus", task_reward: "🎯 Mission reward", upgrade: "Miner upgrade"
   };
   for (const tx of transactions) {
    const li = document.createElement("li");
@@ -611,6 +933,7 @@ async function loadReferrals(){
  try {
   const { referrals } = await api("/api/referrals");
   list.innerHTML = "";
+  if (!referrals.length) { list.innerHTML = '<li class="empty">No friends yet — share your link</li>'; return; }
   for (const r of referrals) {
    const li = document.createElement("li");
    li.innerHTML = `<div class="n"></div><div class="t"></div>`;
@@ -629,6 +952,14 @@ async function refreshMe(){
   showDashboard();
   return true;
  } catch { return false; }
+}
+
+// Light-weight check for claimable missions (nav badge).
+async function checkTasksBadge(){
+ try {
+  const { tasks } = await api("/api/tasks");
+  $("taskDot").classList.toggle("hidden", !tasks.some(t => t.claimable && !t.claimed));
+ } catch {}
 }
 
 // ---------------------------------------------------------------- TON Connect + ton_proof login
@@ -678,7 +1009,8 @@ async function login(wallet){
   store.set(REF_KEY, null);
   applyUser(r.user);
   showDashboard();
-  toast("Wallet connected");
+  checkTasksBadge();
+  toast("⚡ Wallet connected");
  } catch (e) {
   toast("Login failed: " + e.message, true);
   await tonUI.disconnect();
@@ -690,7 +1022,7 @@ async function login(wallet){
 
 async function logout(callServer = true){
  if (callServer && token) { try { await api("/api/auth/logout", { method: "POST" }); } catch {} }
- token = null; me = null;
+ token = null; me = null; shownBalance = null;
  store.set(TOKEN_KEY, null);
  showLanding();
  if (tonUI && tonUI.connected) { try { await tonUI.disconnect(); } catch {} }
@@ -728,6 +1060,7 @@ async function init(){
  });
 
  const loggedIn = await sessionChecked;
+ if (loggedIn) checkTasksBadge();
  await tonUI.connectionRestored;
  if (!loggedIn && !tonUI.connected) await preparePayload();
 

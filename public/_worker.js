@@ -41,8 +41,6 @@ const TASKS = [
   { id: "invite_1", title: "Invite 1 active friend", reward: 50, goal: 1, stat: "activeRefs" },
   { id: "invite_3", title: "Invite 3 active friends", reward: 200, goal: 3, stat: "activeRefs" },
   { id: "invite_10", title: "Invite 10 active friends", reward: 1_000, goal: 10, stat: "activeRefs" },
-  { id: "level_3", title: "Upgrade your miner to level 3", reward: 100, goal: 3, stat: "level" },
-  { id: "level_5", title: "Upgrade your miner to level 5", reward: 500, goal: 5, stat: "level" },
   { id: "streak_7", title: "Check in 7 days in a row", reward: 150, goal: 7, stat: "streak" }
 ];
 
