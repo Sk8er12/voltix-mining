@@ -107,22 +107,80 @@ try {
   uiPreferences: { theme: "DARK" }
  };
 
- tonUI.onStatusChange(wallet => {
+ let proofCheckInProgress = false;
+ tonUI.onStatusChange(async wallet => {
   if(wallet && wallet.account) {
-   connectButton.style.display = "none";
-   statusBox.style.display = "block";
-
-   const address = wallet.account.address;
-   addressBox.textContent =
-    address.slice(0,8) + "..." + address.slice(-8);
+   const item = wallet.connectItems && wallet.connectItems.tonProof;
+   if (!item || !item.proof) {
+    if (!proofCheckInProgress) {
+     proofCheckInProgress = true;
+     try { await tonUI.disconnect(); } catch (e) {}
+     connectButton.textContent = "Wallet must support TON Proof";
+     connectButton.style.display = "block";
+     statusBox.style.display = "none";
+     proofCheckInProgress = false;
+    }
+    return;
+   }
+   if (proofCheckInProgress) return;
+   proofCheckInProgress = true;
+   connectButton.style.display = "block";
+   connectButton.textContent = "Verifying wallet ownership...";
+   try {
+    const response = await fetch("/api/ton-proof/verify", {
+     method: "POST",
+     credentials: "same-origin",
+     headers: { "Content-Type": "application/json" },
+     body: JSON.stringify({
+      address: wallet.account.address,
+      network: wallet.account.chain,
+      public_key: wallet.account.publicKey,
+      proof: {
+       ...item.proof,
+       state_init: wallet.account.walletStateInit
+      }
+     })
+    });
+    if (!response.ok) throw new Error("TON Proof was rejected");
+    const result = await response.json();
+    connectButton.style.display = "none";
+    statusBox.style.display = "block";
+    addressBox.textContent = result.address.slice(0,8) + "..." + result.address.slice(-8);
+   } catch (error) {
+    console.error(error);
+    connectButton.textContent = "Verification failed — reconnect";
+    try { await tonUI.disconnect(); } catch (e) {}
+   } finally {
+    proofCheckInProgress = false;
+   }
   } else {
    connectButton.style.display = "block";
+   connectButton.textContent = "Connect TON Wallet";
    statusBox.style.display = "none";
   }
  });
 
- connectButton.addEventListener("click", () => {
-  tonUI.openModal();
+ connectButton.addEventListener("click", async () => {
+  connectButton.disabled = true;
+  connectButton.textContent = "Preparing secure login...";
+  try {
+   const response = await fetch("/api/ton-proof/payload", {
+    method: "POST",
+    credentials: "same-origin"
+   });
+   if (!response.ok) throw new Error("Could not create login challenge");
+   const data = await response.json();
+   tonUI.setConnectRequestParameters({
+    state: "ready",
+    value: { tonProof: data.payload }
+   });
+   await tonUI.openModal();
+  } catch (error) {
+   console.error(error);
+   connectButton.textContent = "Try connecting again";
+  } finally {
+   connectButton.disabled = false;
+  }
  });
 
  document.getElementById("disconnect")
