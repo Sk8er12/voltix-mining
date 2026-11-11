@@ -42,6 +42,15 @@ const DAILY_MAX_STREAK = 7;
 const WITHDRAW_MIN = V(10_000);
 const WITHDRAW_FEE_PERCENT = 5;             // burned, the user receives the rest
 const WITHDRAW_COOLDOWN = 48 * 60 * 60;     // one request per 48 h
+// Payouts are made in the VTX jetton, 1 VOLTIX = 1 VTX (both use 6 decimals).
+const TOKEN = {
+  name: "VOLTIX",
+  symbol: "VTX",
+  decimals: 6,
+  master: "EQDykYNay7dM0jdk4J3QSvVtMjqI-4bjVfFCQMpzJnYw5-zF",
+  image: "https://voltix-mining.pages.dev/vtx.png",
+  explorer: "https://tonviewer.com/EQDykYNay7dM0jdk4J3QSvVtMjqI-4bjVfFCQMpzJnYw5-zF"
+};
 // Optional variable ADMIN_WALLETS: comma separated raw addresses (0:abc...) allowed
 // to approve / reject withdrawals.
 
@@ -594,6 +603,7 @@ function withdrawalView(w) {
     amount: formatBalance(w.amount_micro),
     fee: formatBalance(w.fee_micro),
     net: formatBalance(w.net_micro),
+    net_units: String(w.net_micro),           // VTX base units to send (6 decimals)
     wallet: friendlyAddress(w.wallet_address),
     status: w.status,
     created_at: w.created_at,
@@ -819,6 +829,7 @@ const routes = {
         processing: "1–24 hours"
       },
       is_admin: isAdmin(env, user),
+      token: TOKEN,
       withdrawals: results.map(withdrawalView)
     };
   },
@@ -872,7 +883,7 @@ const routes = {
       db.prepare("SELECT * FROM withdrawals WHERE status = 'pending' ORDER BY id LIMIT 100").all(),
       db.prepare("SELECT * FROM withdrawals WHERE status <> 'pending' ORDER BY processed_at DESC LIMIT 30").all()
     ]);
-    return { pending: pending.results.map(withdrawalView), recent: recent.results.map(withdrawalView) };
+    return { token: TOKEN, pending: pending.results.map(withdrawalView), recent: recent.results.map(withdrawalView) };
   },
 
   // Admin: { id, action: "paid", tx_hash? } after sending the coins, or { id, action: "reject" } (refunds).

@@ -305,6 +305,17 @@ button:disabled{cursor:default}
 .badge.rejected{color:var(--err);background:rgba(255,92,122,.12)}
 .list .r{text-align:right}
 .list a{color:var(--cyan);font-size:12px}
+.token{display:flex;align-items:center;gap:12px;margin-top:16px;padding:14px;border-radius:18px;
+ background:linear-gradient(145deg,rgba(0,229,255,.08),rgba(139,92,255,.08));border:1px solid rgba(0,229,255,.25)}
+.token img{width:46px;height:46px;border-radius:50%;flex:none;box-shadow:0 0 18px rgba(0,229,255,.45)}
+.token .txt{flex:1;min-width:0}
+.token .ttl{font-weight:800;font-size:15px}
+.token .ttl small{color:var(--cyan);font-family:var(--display);font-size:11px;letter-spacing:1px;margin-left:6px}
+.token .sm{color:var(--muted);font-size:12px;margin-top:3px}
+.token .addr{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--cyan);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.token-links{display:flex;gap:8px;margin-top:10px}
+.token-links a,.token-links button{flex:1;text-align:center;border:1px solid var(--edge);background:rgba(255,255,255,.04);border-radius:12px;padding:10px 6px;font-size:12px;font-weight:700;color:var(--text);text-decoration:none}
+.pill.ton{background:linear-gradient(100deg,#0098EA,#33B5FF);text-decoration:none;display:inline-flex;align-items:center}
 .admin{border-color:rgba(255,61,203,.35)}
 .adm-row{padding:14px 0;border-bottom:1px solid rgba(255,255,255,.06)}
 .adm-row:last-child{border-bottom:0}
@@ -492,6 +503,15 @@ button:disabled{cursor:default}
      <div class="stat"><div class="label">Available</div><div class="v" id="wBalance">0</div></div>
      <div class="stat"><div class="label">Withdrawn</div><div class="v" id="wTotal">0</div></div>
     </div>
+    <div class="token">
+     <img id="tImg" src="/vtx.png" alt="VTX">
+     <div class="txt">
+      <div class="ttl"><span id="tName">VOLTIX</span><small id="tSym">VTX</small></div>
+      <div class="sm">TON jetton · 1 VOLTIX = 1 <span id="tSym2">VTX</span></div>
+      <div class="addr" id="tAddr"></div>
+     </div>
+    </div>
+    <div class="token-links"><button id="tCopy">Copy contract</button><a id="tView" target="_blank" rel="noopener">Tonviewer ↗</a></div>
     <div style="margin-top:16px" class="w-head">Wallet connected</div>
     <div class="w-addr"><span id="wAddr"></span><button id="wCopy">Copy</button></div>
     <p class="hint">Withdrawals are sent to this wallet. To use another one, disconnect and sign in with it.</p>
@@ -500,6 +520,7 @@ button:disabled{cursor:default}
    <div class="glass card">
     <div class="label">Withdraw VOLTIX</div>
     <ul class="rules">
+     <li><i>🪙</i><span>Paid out as <b>VTX</b> tokens to your connected wallet</span></li>
      <li><i>⏱</i><span>Processing time: 1–24 hours</span></li>
      <li><i>🔁</i><span>Limit: 1 request every <b id="rCool">48</b> hours</span></li>
      <li><i>🔒</i><span>A new request can't be made while the previous one is processing</span></li>
@@ -1060,6 +1081,14 @@ function renderWallet(){
  $("wBalance").textContent = fmt(wallet.balance, 2);
  $("wTotal").textContent = fmt(wallet.total_withdrawn, 2);
  $("wAddr").textContent = wallet.wallet;
+ if (wallet.token) {
+  const tk = wallet.token;
+  $("tImg").src = tk.image;
+  $("tName").textContent = tk.name;
+  $("tSym").textContent = $("tSym2").textContent = tk.symbol;
+  $("tAddr").textContent = tk.master;
+  $("tView").href = tk.explorer;
+ }
  $("rCool").textContent = r.cooldown_hours;
  $("rMin").textContent = fmt(r.min, 0);
  $("rFee").textContent = $("wFeeLbl").textContent = r.fee_percent;
@@ -1134,6 +1163,16 @@ document.querySelectorAll(".chips button").forEach(b => b.addEventListener("clic
  walletTick();
 }));
 
+function openExternal(url){
+ if (inTelegram && tg.openLink) { try { tg.openLink(url); return; } catch {} }
+ window.open(url, "_blank", "noopener");
+}
+$("tView").addEventListener("click", e => { e.preventDefault(); if (wallet && wallet.token) openExternal(wallet.token.explorer); });
+$("tCopy").addEventListener("click", async () => {
+ try { await navigator.clipboard.writeText($("tAddr").textContent); toast("Contract address copied"); }
+ catch { toast("Copy failed", true); }
+});
+
 $("wCopy").addEventListener("click", async () => {
  try { await navigator.clipboard.writeText($("wAddr").textContent); toast("Address copied"); }
  catch { toast("Copy failed", true); }
@@ -1162,7 +1201,7 @@ $("wSubmit").addEventListener("click", async () => {
 async function loadAdmin(){
  const box = $("adminList");
  try {
-  const { pending } = await api("/api/admin/withdrawals");
+  const { pending, token } = await api("/api/admin/withdrawals");
   $("adminCard").classList.remove("hidden");
   box.innerHTML = "";
   if (!pending.length) { box.innerHTML = '<div class="empty">No pending withdrawals</div>'; return; }
@@ -1171,8 +1210,15 @@ async function loadAdmin(){
    row.className = "adm-row";
    row.innerHTML = `<div class="top-line"><span class="a"></span><span class="t" style="color:var(--muted);font-weight:500;font-size:12px"></span></div>
     <div class="w"></div>
+    <div class="acts"><a class="pill ton" target="_blank" rel="noopener">💎 Pay in Tonkeeper</a></div>
     <div class="acts"><input placeholder="tx hash (optional)"><button class="pill">Paid</button><button class="pill red">Reject</button></div>`;
-   row.querySelector(".a").textContent = `Send ${fmt(w.net, 2)} VOLTIX`;
+   row.querySelector(".a").textContent = `Send ${fmt(w.net, 2)} ${token ? token.symbol : "VTX"}`;
+   const pay = row.querySelector(".pill.ton");
+   if (token) {
+    const url = `https://app.tonkeeper.com/transfer/${encodeURIComponent(w.wallet)}?jetton=${encodeURIComponent(token.master)}&amount=${w.net_units}&text=${encodeURIComponent("VOLTIX withdrawal #" + w.id)}`;
+    pay.href = url;
+    pay.addEventListener("click", e => { e.preventDefault(); openExternal(url); });
+   } else pay.remove();
    row.querySelector(".t").textContent = `#${w.id} · ${date(w.created_at)}`;
    row.querySelector(".w").textContent = w.wallet;
    row.querySelector(".w").addEventListener("click", async () => {
