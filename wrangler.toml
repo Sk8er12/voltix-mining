@@ -1,0 +1,12 @@
+name = "voltix-mining"
+compatibility_date = "2024-11-01"
+pages_build_output_dir = "public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "voltaic-db"
+database_id = "cf4203dd-290c-4cfe-ba9b-2624ff3fcc3c"
+
+# [vars]
+# ALLOWED_DOMAINS = "voltix-mining.pages.dev"
+# ALLOW_TESTNET = "false"

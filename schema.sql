@@ -1,0 +1,52 @@
+-- VOLTIX Mining — D1 schema.
+-- Apply:  npx wrangler d1 execute voltix-db --remote --file=schema.sql
+-- Safe to run again: every statement is IF NOT EXISTS.
+
+CREATE TABLE IF NOT EXISTS users (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  wallet_address TEXT    NOT NULL UNIQUE,     -- raw form, e.g. 0:abc...
+  balance_micro  INTEGER NOT NULL DEFAULT 0,  -- 1 VOLTIX = 1 000 000 micro
+  created_at     INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS mining_sessions (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id      INTEGER NOT NULL REFERENCES users(id),
+  started_at   INTEGER NOT NULL,
+  ends_at      INTEGER NOT NULL,
+  reward_micro INTEGER NOT NULL,
+  claimed_at   INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_mining_user ON mining_sessions(user_id, claimed_at);
+
+CREATE TABLE IF NOT EXISTS referrals (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  referrer_id INTEGER NOT NULL REFERENCES users(id),
+  referred_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_referrals_referrer ON referrals(referrer_id);
+
+CREATE TABLE IF NOT EXISTS transactions (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id      INTEGER NOT NULL REFERENCES users(id),
+  amount_micro INTEGER NOT NULL,
+  type         TEXT    NOT NULL,              -- mining_reward | referral_bonus
+  created_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id, id);
+
+-- One-time ton_proof challenges
+CREATE TABLE IF NOT EXISTS login_payloads (
+  payload    TEXT    PRIMARY KEY,
+  expires_at INTEGER NOT NULL
+);
+
+-- Login sessions (only the SHA-256 of the token is stored)
+CREATE TABLE IF NOT EXISTS user_sessions (
+  token_hash TEXT    PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id),
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);

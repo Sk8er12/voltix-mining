@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#080D18">
+<title>VOLTIX Mining</title>
+<link rel="icon" href="/icon.png">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+<style>
+*{box-sizing:border-box}
+:root{
+ --bg:#080D18;--card:#101b2c;--line:#24446c;--muted:#8999B1;--dim:#52647E;
+ --accent:#65B7FF;--accent2:#1679E9;--ok:#3BD59A;--err:#FF6B7A;
+}
+html,body{margin:0;background:var(--bg);color:#fff}
+body{
+ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+ min-height:100vh;display:flex;justify-content:center;
+ padding:24px 16px calc(24px + env(safe-area-inset-bottom));
+}
+button{font:inherit;cursor:pointer}
+button:disabled{opacity:.55;cursor:default}
+.app{width:100%;max-width:420px}
+.hidden{display:none!important}
+
+/* ---------- landing ---------- */
+.landing{text-align:center;padding-top:6vh}
+.logo{
+ width:112px;height:112px;margin:0 auto 25px;border-radius:32px;
+ background:linear-gradient(145deg,#153B75,#071326);border:1px solid #2767B8;
+ display:grid;place-items:center;box-shadow:0 0 55px #0879ff35;
+ font-size:54px;font-weight:900;color:#62B7FF;
+}
+h1{font-size:36px;letter-spacing:5px;margin:0}
+.sub{color:#8194B2;letter-spacing:4px;font-size:13px;margin-top:14px}
+.tag{
+ display:inline-block;margin-top:32px;padding:9px 16px;border:1px solid var(--line);
+ border-radius:30px;color:var(--accent);font-size:12px;letter-spacing:2px
+}
+h2{font-size:25px;margin:30px 0 12px}
+.desc{color:var(--muted);font-size:15px;line-height:1.7}
+.primary{
+ width:100%;padding:18px;border:0;border-radius:16px;
+ background:linear-gradient(100deg,var(--accent2),#38B7FF);color:#fff;
+ font-size:18px;font-weight:700;box-shadow:0 8px 35px #168bff35;
+}
+.landing .primary{margin-top:35px}
+.note{font-size:11px;color:#687B96;margin-top:18px;letter-spacing:1px}
+.footer{margin-top:50px;color:var(--dim);font-size:11px;letter-spacing:3px}
+.footer a{color:var(--dim)}
+
+/* ---------- dashboard ---------- */
+.top{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.mini-logo{
+ width:40px;height:40px;border-radius:12px;flex:none;
+ background:linear-gradient(145deg,#153B75,#071326);border:1px solid #2767B8;
+ display:grid;place-items:center;font-weight:900;color:#62B7FF;
+}
+.top .who{flex:1;min-width:0}
+.top .name{font-weight:800;letter-spacing:3px;font-size:15px}
+.top .addr{color:var(--muted);font-size:12px;font-family:ui-monospace,Menlo,monospace;
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ghost{
+ background:transparent;color:var(--muted);border:1px solid #34445c;
+ padding:8px 12px;border-radius:10px;font-size:12px
+}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;margin-bottom:14px}
+.label{color:var(--muted);font-size:11px;letter-spacing:2px;text-transform:uppercase}
+.balance{font-size:34px;font-weight:800;margin-top:6px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.balance small{font-size:15px;color:var(--accent);font-weight:700;margin-left:6px}
+
+.miner{text-align:center}
+.ring{position:relative;width:210px;height:210px;margin:6px auto 16px}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:10}
+.ring .bg{stroke:#18304f}
+.ring .fg{stroke:url(#grad);stroke-linecap:round;transition:stroke-dashoffset .9s linear}
+.ring .center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring .mined{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
+.ring .unit{color:var(--accent);font-size:12px;letter-spacing:2px;margin-top:2px}
+.ring .timer{color:var(--muted);font-size:13px;margin-top:10px;font-variant-numeric:tabular-nums}
+.ring.active{filter:drop-shadow(0 0 18px #168bff40)}
+.state{font-size:13px;color:var(--muted);margin-bottom:14px;min-height:18px}
+.state b{color:var(--ok)}
+
+.tabs{display:flex;gap:6px;background:#0c1524;border:1px solid var(--line);border-radius:14px;padding:4px;margin-bottom:14px}
+.tabs button{flex:1;border:0;background:transparent;color:var(--muted);padding:10px;border-radius:10px;font-size:13px;font-weight:600}
+.tabs button.on{background:#17304f;color:#fff}
+
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+.stat{background:#0c1524;border:1px solid #1d3352;border-radius:12px;padding:12px}
+.stat .v{font-size:20px;font-weight:800;margin-top:4px;overflow-wrap:anywhere}
+.reflink{
+ display:flex;gap:8px;align-items:center;background:#0c1524;border:1px solid #1d3352;
+ border-radius:12px;padding:6px 6px 6px 12px;margin-top:12px
+}
+.reflink span{flex:1;min-width:0;font-size:12px;color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reflink button{border:0;border-radius:9px;background:#17304f;color:#fff;padding:9px 12px;font-size:12px;font-weight:600}
+.share{margin-top:10px;width:100%;padding:13px;border-radius:12px;border:1px solid var(--line);background:transparent;color:#fff;font-weight:600}
+.hint{color:var(--muted);font-size:13px;line-height:1.6;margin:8px 0 0}
+
+.list{list-style:none;margin:0;padding:0}
+.list li{display:flex;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid #1a2c45;font-size:14px}
+.list li:last-child{border-bottom:0}
+.list .t{color:var(--muted);font-size:12px;margin-top:2px}
+.list .amt{color:var(--ok);font-weight:700;white-space:nowrap}
+.empty{color:var(--dim);text-align:center;padding:18px 0;font-size:13px}
+
+.toast{
+ position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);
+ background:#17304f;border:1px solid var(--line);color:#fff;padding:12px 18px;border-radius:12px;
+ font-size:14px;max-width:calc(100% - 32px);box-shadow:0 10px 30px #0008;z-index:10
+}
+.toast.err{border-color:var(--err)}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid #fff6;border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+
+<body>
+<main class="app">
+
+ <!-- Landing / connect -->
+ <section class="landing" id="landing">
+  <div class="logo">V</div>
+  <h1>VOLTIX</h1>
+  <div class="sub">MINING ECOSYSTEM</div>
+  <div class="tag">● NEXT GENERATION MINING</div>
+  <h2>Mine. Earn. Grow.</h2>
+  <p class="desc">Welcome to VOLTIX.<br>Connect your TON wallet to enter the ecosystem.</p>
+  <button class="primary" id="connect">Connect TON Wallet</button>
+  <p class="note">SECURE CONNECTION · TON CONNECT</p>
+  <div class="footer">
+   POWERED BY TON BLOCKCHAIN<br><br>
+   <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>
+  </div>
+ </section>
+
+ <!-- Dashboard -->
+ <section class="hidden" id="dashboard">
+  <div class="top">
+   <div class="mini-logo">V</div>
+   <div class="who">
+    <div class="name">VOLTIX</div>
+    <div class="addr" id="addr"></div>
+   </div>
+   <button class="ghost" id="disconnect">Disconnect</button>
+  </div>
+
+  <div class="card">
+   <div class="label">Balance</div>
+   <div class="balance"><span id="balance">0.00</span><small>VOLTIX</small></div>
+  </div>
+
+  <div class="tabs">
+   <button class="on" data-tab="mine">Mining</button>
+   <button data-tab="friends">Friends</button>
+   <button data-tab="history">History</button>
+  </div>
+
+  <div class="card miner" data-pane="mine">
+   <div class="ring" id="ring">
+    <svg viewBox="0 0 220 220">
+     <defs>
+      <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
+       <stop offset="0" stop-color="#1679E9"/><stop offset="1" stop-color="#38B7FF"/>
+      </linearGradient>
+     </defs>
+     <circle class="bg" cx="110" cy="110" r="95"/>
+     <circle class="fg" id="ringFg" cx="110" cy="110" r="95"/>
+    </svg>
+    <div class="center">
+     <div class="mined" id="mined">0.0000</div>
+     <div class="unit">VOLTIX</div>
+     <div class="timer" id="timer">--:--:--</div>
+    </div>
+   </div>
+   <div class="state" id="state"></div>
+   <button class="primary" id="mineBtn">Start Mining</button>
+   <p class="hint" id="rate"></p>
+  </div>
+
+  <div class="card hidden" data-pane="friends">
+   <div class="label">Invite friends</div>
+   <p class="hint" id="refHint"></p>
+   <div class="stats">
+    <div class="stat"><div class="label">Friends</div><div class="v" id="refCount">0</div></div>
+    <div class="stat"><div class="label">Earned</div><div class="v" id="refEarned">0</div></div>
+   </div>
+   <div class="reflink"><span id="refLink"></span><button id="copyRef">Copy</button></div>
+   <button class="share" id="shareRef">Share invite</button>
+   <ul class="list" id="refList" style="margin-top:12px"></ul>
+  </div>
+
+  <div class="card hidden" data-pane="history">
+   <div class="label">Transactions</div>
+   <ul class="list" id="txList"></ul>
+  </div>
+
+  <div class="footer" style="text-align:center;margin-top:30px">
+   <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>
+  </div>
+ </section>
+</main>
+
+<div class="toast hidden" id="toast"></div>
+
+<script src="https://unpkg.com/@tonconnect/ui@2.0.9/dist/tonconnect-ui.min.js"></script>
+<script>
+// Set this to your Telegram Mini App link (e.g. "https://t.me/VoltixBot/app")
+// to generate t.me invite links. Leave empty to use website links.
+const TELEGRAM_APP_URL = "";
+
+const $ = id => document.getElementById(id);
+const tg = window.Telegram && window.Telegram.WebApp;
+const inTelegram = !!(tg && tg.initData);
+if (inTelegram) { tg.ready(); tg.expand(); }
+
+const TOKEN_KEY = "voltix_token";
+const REF_KEY = "voltix_ref";
+
+const store = {
+ get(k){ try { return localStorage.getItem(k); } catch { return null; } },
+ set(k,v){ try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k,v); } catch {} }
+};
+
+// Remember the referral code until the user signs in.
+(() => {
+ const ref = new URLSearchParams(location.search).get("ref") ||
+  (inTelegram && tg.initDataUnsafe && tg.initDataUnsafe.start_param);
+ if (ref) store.set(REF_KEY, ref);
+})();
+
+let token = store.get(TOKEN_KEY);
+let me = null;
+let clockOffset = 0;   // server time - local time, seconds
+let busy = false;
+
+// ---------------------------------------------------------------- UI helpers
+let toastTimer;
+function toast(text, isError){
+ const t = $("toast");
+ t.textContent = text;
+ t.classList.toggle("err", !!isError);
+ t.classList.remove("hidden");
+ clearTimeout(toastTimer);
+ toastTimer = setTimeout(() => t.classList.add("hidden"), 3200);
+ if (inTelegram && tg.HapticFeedback) {
+  tg.HapticFeedback.notificationOccurred(isError ? "error" : "success");
+ }
+}
+
+const fmt = (v, d = 2) => Number(v).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+const short = a => a ? a.slice(0, 6) + "…" + a.slice(-6) : "";
+const date = s => new Date(s * 1000).toLocaleString();
+const serverNow = () => Date.now() / 1000 + clockOffset;
+function hms(sec){
+ sec = Math.max(0, Math.ceil(sec));
+ const p = n => String(n).padStart(2, "0");
+ return `${p(Math.floor(sec / 3600))}:${p(Math.floor(sec % 3600 / 60))}:${p(sec % 60)}`;
+}
+
+function showLanding(){ $("landing").classList.remove("hidden"); $("dashboard").classList.add("hidden"); }
+function showDashboard(){ $("landing").classList.add("hidden"); $("dashboard").classList.remove("hidden"); }
+
+document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
+ document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x === b));
+ document.querySelectorAll("[data-pane]").forEach(p => p.classList.toggle("hidden", p.dataset.pane !== b.dataset.tab));
+ if (b.dataset.tab === "history") loadHistory();
+ if (b.dataset.tab === "friends") loadReferrals();
+}));
+
+// ---------------------------------------------------------------- API
+async function api(path, opts = {}){
+ const headers = { "Content-Type": "application/json" };
+ if (token) headers.Authorization = "Bearer " + token;
+ const res = await fetch(path, {
+  method: opts.method || "GET",
+  headers,
+  body: opts.body ? JSON.stringify(opts.body) : undefined
+ });
+ let data;
+ try { data = await res.json(); } catch { data = { success: false, error: "Server error" }; }
+ if (res.status === 401 && token) { logout(false); }
+ if (!data.success) throw new Error(data.error || "Request failed");
+ return data;
+}
+
+// ---------------------------------------------------------------- rendering
+const RING_LEN = 2 * Math.PI * 95;
+$("ringFg").style.strokeDasharray = RING_LEN;
+
+function render(){
+ if (!me) return;
+ $("addr").textContent = short(me.wallet_friendly);
+ $("balance").textContent = fmt(me.balance, 2);
+ $("rate").textContent =
+  `Earn ${fmt(me.config.reward, 0)} VOLTIX every ${Math.round(me.config.duration / 3600)} hours. Come back to claim and start again.`;
+ renderReferralInfo();
+ tick();
+}
+
+function tick(){
+ if (!me) return;
+ const m = me.mining;
+ const btn = $("mineBtn");
+ let progress = 0, mined = 0, timer = "--:--:--", state = "";
+ let st = m.state;
+
+ if (st === "mining") {
+  const t = serverNow();
+  const total = m.ends_at - m.started_at;
+  progress = Math.min(1, Math.max(0, (t - m.started_at) / total));
+  mined = Number(m.reward) * progress;
+  timer = hms(m.ends_at - t);
+  if (progress >= 1) st = "ready";
+  state = "⚡ Mining in progress";
+ }
+ if (st === "ready") {
+  progress = 1; mined = Number(m.reward); timer = "00:00:00";
+  state = "<b>✓ Mining complete — claim your reward</b>";
+ }
+ if (st === "idle") state = "Miner is idle";
+
+ $("ringFg").style.strokeDashoffset = RING_LEN * (1 - progress);
+ $("ring").classList.toggle("active", st === "mining");
+ $("mined").textContent = mined.toFixed(4);
+ $("timer").textContent = timer;
+ $("state").innerHTML = state;
+
+ if (!busy) {
+  btn.disabled = st === "mining";
+  btn.textContent = st === "idle" ? "Start Mining" : st === "ready" ? `Claim ${fmt(m.reward, 0)} VOLTIX` : "Mining…";
+ }
+}
+setInterval(tick, 1000);
+
+function referralLink(){
+ if (!me) return "";
+ return TELEGRAM_APP_URL
+  ? `${TELEGRAM_APP_URL}?startapp=${me.ref_code}`
+  : `${location.origin}/?ref=${me.ref_code}`;
+}
+
+function renderReferralInfo(){
+ $("refHint").textContent =
+  `Get ${me.config.referral_percent}% of everything your friends mine. They join with your link and connect a wallet.`;
+ $("refCount").textContent = me.referrals;
+ $("refEarned").textContent = fmt(me.referral_earned, 2);
+ $("refLink").textContent = referralLink();
+}
+
+function applyUser(user){
+ me = user;
+ clockOffset = user.mining.now - Date.now() / 1000;
+ render();
+}
+
+// ---------------------------------------------------------------- actions
+$("mineBtn").addEventListener("click", async () => {
+ if (!me || busy) return;
+ const btn = $("mineBtn");
+ busy = true; btn.disabled = true;
+ btn.innerHTML = '<span class="spinner"></span>Please wait';
+ try {
+  if (me.mining.state === "idle") {
+   const r = await api("/api/mining/start", { method: "POST" });
+   me.mining = r.mining;
+   clockOffset = r.mining.now - Date.now() / 1000;
+   toast("Mining started");
+  } else {
+   const r = await api("/api/mining/claim", { method: "POST" });
+   applyUser(r.user);
+   toast(`+${fmt(r.reward, 2)} VOLTIX claimed`);
+  }
+ } catch (e) {
+  toast(e.message, true);
+  refreshMe();
+ } finally {
+  busy = false;
+  tick();
+ }
+});
+
+$("copyRef").addEventListener("click", async () => {
+ try { await navigator.clipboard.writeText(referralLink()); toast("Link copied"); }
+ catch { toast("Copy failed", true); }
+});
+
+$("shareRef").addEventListener("click", () => {
+ const link = referralLink();
+ const text = "Join me on VOLTIX — mine VOLTIX every day!";
+ const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`;
+ if (inTelegram) tg.openTelegramLink(shareUrl);
+ else if (navigator.share) navigator.share({ title: "VOLTIX", text, url: link }).catch(() => {});
+ else window.open(shareUrl, "_blank");
+});
+
+async function loadHistory(){
+ const list = $("txList");
+ try {
+  const { transactions } = await api("/api/transactions");
+  list.innerHTML = "";
+  if (!transactions.length) { list.innerHTML = '<li class="empty">No transactions yet</li>'; return; }
+  const names = { mining_reward: "Mining reward", referral_bonus: "Referral bonus" };
+  for (const tx of transactions) {
+   const li = document.createElement("li");
+   li.innerHTML = `<div><div class="n"></div><div class="t"></div></div><div class="amt"></div>`;
+   li.querySelector(".n").textContent = names[tx.type] || tx.type;
+   li.querySelector(".t").textContent = date(tx.created_at);
+   li.querySelector(".amt").textContent = "+" + fmt(tx.amount, 2);
+   list.appendChild(li);
+  }
+ } catch (e) { toast(e.message, true); }
+}
+
+async function loadReferrals(){
+ const list = $("refList");
+ try {
+  const { referrals } = await api("/api/referrals");
+  list.innerHTML = "";
+  for (const r of referrals) {
+   const li = document.createElement("li");
+   li.innerHTML = `<div class="n"></div><div class="t"></div>`;
+   li.querySelector(".n").textContent = short(r.wallet);
+   li.querySelector(".t").textContent = new Date(r.created_at * 1000).toLocaleDateString();
+   list.appendChild(li);
+  }
+ } catch (e) { toast(e.message, true); }
+}
+
+async function refreshMe(){
+ if (!token) return false;
+ try {
+  const { user } = await api("/api/me");
+  applyUser(user);
+  showDashboard();
+  return true;
+ } catch { return false; }
+}
+
+// ---------------------------------------------------------------- TON Connect + ton_proof login
+let tonUI;
+let payloadTimer;
+
+async function preparePayload(){
+ clearTimeout(payloadTimer);
+ tonUI.setConnectRequestParameters({ state: "loading" });
+ try {
+  const { payload } = await api("/api/auth/payload", { method: "POST" });
+  tonUI.setConnectRequestParameters({ state: "ready", value: { tonProof: payload } });
+ } catch (e) {
+  tonUI.setConnectRequestParameters(null);
+  toast("Server unavailable: " + e.message, true);
+ }
+ payloadTimer = setTimeout(preparePayload, 10 * 60 * 1000); // payload lives 15 min
+}
+
+async function login(wallet){
+ const item = wallet.connectItems && wallet.connectItems.tonProof;
+ if (!item || !("proof" in item)) {
+  toast("Wallet did not sign the login request. Please connect again.", true);
+  await tonUI.disconnect();
+  return;
+ }
+ try {
+  const r = await api("/api/auth/verify", {
+   method: "POST",
+   body: {
+    address: wallet.account.address,
+    network: wallet.account.chain,
+    public_key: wallet.account.publicKey,
+    proof: { ...item.proof, state_init: wallet.account.walletStateInit },
+    referral: store.get(REF_KEY)
+   }
+  });
+  token = r.token;
+  store.set(TOKEN_KEY, token);
+  store.set(REF_KEY, null);
+  applyUser(r.user);
+  showDashboard();
+  toast("Wallet connected");
+ } catch (e) {
+  toast(e.message, true);
+  await tonUI.disconnect();
+ }
+}
+
+async function logout(callServer = true){
+ if (callServer && token) { try { await api("/api/auth/logout", { method: "POST" }); } catch {} }
+ token = null; me = null;
+ store.set(TOKEN_KEY, null);
+ showLanding();
+ if (tonUI && tonUI.connected) { try { await tonUI.disconnect(); } catch {} }
+}
+
+$("disconnect").addEventListener("click", () => logout(true));
+
+async function init(){
+ if (typeof TON_CONNECT_UI === "undefined") {
+  $("connect").textContent = "Connection unavailable";
+  $("connect").disabled = true;
+  return;
+ }
+
+ tonUI = new TON_CONNECT_UI.TonConnectUI({
+  manifestUrl: location.origin + "/tonconnect-manifest.json"
+ });
+ tonUI.uiOptions = {
+  language: "en",
+  uiPreferences: { theme: TON_CONNECT_UI.THEME.DARK },
+  ...(TELEGRAM_APP_URL ? { twaReturnUrl: TELEGRAM_APP_URL } : {})
+ };
+
+ const loggedIn = await refreshMe();
+ await tonUI.connectionRestored;
+
+ if (!loggedIn) {
+  // A wallet connection without our session can't be used — start clean.
+  if (tonUI.connected) await tonUI.disconnect();
+  await preparePayload();
+ }
+
+ tonUI.onStatusChange(async wallet => {
+  if (wallet) {
+   if (!token) await login(wallet);
+  } else {
+   if (token) await logout(true);
+   await preparePayload();
+  }
+ });
+
+ $("connect").addEventListener("click", () => tonUI.openModal());
+}
+
+init().catch(e => {
+ console.error(e);
+ toast("Failed to start: " + e.message, true);
+});
+
+// Refresh state when the user comes back to the app.
+document.addEventListener("visibilitychange", () => {
+ if (document.visibilityState === "visible" && token) refreshMe();
+});
+</script>
+</body>
+</html>

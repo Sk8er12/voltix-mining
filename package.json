@@ -1,15 +1,15 @@
 {
   "name": "voltix-mining",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
-  "dependencies": {
-    "@ton/crypto": "3.3.0",
-    "@ton/ton": "15.1.0",
-    "zod": "3.25.76",
-    "buffer": "6.0.3"
+  "scripts": {
+    "dev": "wrangler pages dev",
+    "db:init:local": "wrangler d1 execute voltaic-db --local --file=schema.sql",
+    "db:init": "wrangler d1 execute voltaic-db --remote --file=schema.sql",
+    "deploy": "wrangler pages deploy"
   },
   "devDependencies": {
-    "esbuild": "0.25.0"
+    "wrangler": "^3.90.0"
   }
 }
