@@ -70,6 +70,20 @@ export default {
         });
       }
 
+      // SECURITY GATE: wallet-address-only API routes are intentionally disabled.
+      // They currently trust a client-supplied wallet address and do not verify TON Proof.
+      // Re-enable these routes only after authenticated HttpOnly sessions are implemented.
+      if (
+        path === "/api/register" ||
+        path === "/api/me" ||
+        path === "/api/mining/start" ||
+        path === "/api/mining/claim" ||
+        path === "/api/referrals" ||
+        path === "/api/transactions"
+      ) {
+        return error("Wallet authentication is being upgraded. Please try again later.", 503);
+      }
+
       // REGISTER USER
       if (path === "/api/register" && request.method === "POST") {
         const body = await request.json();
