@@ -19,20 +19,32 @@ const REFERRAL_PERCENT = 10;                // referrer gets 10% of every claim
 const V = n => Math.round(n * TOKEN_DECIMALS); // VOLTIX -> micro units
 const MIN_CLAIM = V(0.1);                   // smallest claim (~1.5 minutes of mining)
 
-// Miner level = how many VTX the user holds in their connected TON wallet (on-chain).
-// hold: VTX needed, reward: VOLTIX mined per day at that level.
-const MINER_LEVELS = [
-  { hold: 0, reward: 100 },
-  { hold: 1_000, reward: 120 },
-  { hold: 5_000, reward: 145 },
-  { hold: 10_000, reward: 175 },
-  { hold: 25_000, reward: 210 },
-  { hold: 50_000, reward: 250 },
-  { hold: 100_000, reward: 300 },
-  { hold: 250_000, reward: 360 },
-  { hold: 500_000, reward: 430 },
-  { hold: 1_000_000, reward: 520 }
-];
+// Miner level (1–500) = how many VTX the user holds in their connected TON wallet (on-chain).
+// Speed: BASE_PER_HOUR × boost, boost = 1 + 0.3·k + 0.05·k² (k = level − 1).
+// Holding needed: ≈ 28 · level^2.73 VTX (level 1 needs nothing), rounded to 4 significant digits.
+// 5 leagues of 100 levels each.
+const MAX_LEVEL = 500;
+const BASE_PER_HOUR = 15;
+const LEAGUES = ["Bronze", "Silver", "Gold", "Diamond", "Legend"];
+const levelBoost = l => Math.round((1 + 0.3 * (l - 1) + 0.05 * (l - 1) ** 2) * 100) / 100;
+const roundSig = (x, digits = 4) => {
+  if (x < 10 ** digits) return Math.round(x);
+  const p = 10 ** (Math.floor(Math.log10(x)) - digits + 1);
+  return Math.round(x / p) * p;
+};
+// hold: VTX needed, reward: VOLTIX mined per day, per_hour, boost.
+const MINER_LEVELS = (() => {
+  const out = [];
+  for (let l = 1; l <= MAX_LEVEL; l++) {
+    const boost = levelBoost(l);
+    const perHour = Math.round(BASE_PER_HOUR * boost * 10) / 10;
+    let hold = l === 1 ? 0 : roundSig(28 * l ** 2.73);
+    if (out.length && hold <= out[out.length - 1].hold) hold = out[out.length - 1].hold + 1;
+    out.push({ hold, reward: Math.round(perHour * 24 * 10) / 10, per_hour: perHour, boost });
+  }
+  return out;
+})();
+const leagueOf = l => LEAGUES[Math.min(Math.floor((l - 1) / 100), LEAGUES.length - 1)];
 const levelInfo = lvl => MINER_LEVELS[Math.min(Math.max(lvl || 1, 1), MINER_LEVELS.length) - 1];
 const HOLD_CHECK_TTL = 5 * 60;              // re-read the wallet balance at most every 5 min
 const HOLD_REFRESH_MIN = 20;                // manual "refresh" button cooldown, seconds
@@ -487,11 +499,20 @@ function accrued(user, t = now()) {
 
 // ---------------------------------------------------------------- VTX holdings → level
 
+const HOLD_UNITS = MINER_LEVELS.map(l => BigInt(l.hold) * BigInt(TOKEN_DECIMALS));
 function levelForHolding(units) {               // units: BigInt, 6 decimals
   let level = 1;
-  MINER_LEVELS.forEach((l, i) => { if (units >= BigInt(V(l.hold))) level = i + 1; });
+  for (let i = 0; i < HOLD_UNITS.length && units >= HOLD_UNITS[i]; i++) level = i + 1;
   return level;
 }
+
+const levelView = l => {
+  const x = levelInfo(l);
+  return {
+    level: l, league: leagueOf(l), hold: formatBalance(V(x.hold)),
+    per_hour: x.per_hour, boost: x.boost, reward: formatBalance(V(x.reward))
+  };
+};
 
 // VTX balance (base units, BigInt) of a wallet, or null if the lookup failed.
 async function fetchVtxBalance(env, rawAddress) {
@@ -581,17 +602,14 @@ async function profile(db, user) {
     miner: {
       level,
       max_level: MINER_LEVELS.length,
+      league: leagueOf(level),
       reward: formatBalance(V(levelInfo(level).reward)),
+      per_hour: levelInfo(level).per_hour,
+      boost: levelInfo(level).boost,
+      hold: formatBalance(V(levelInfo(level).hold)),
       held: formatBalance(user.held_micro || 0),        // VTX in the connected wallet
       held_checked_at: user.held_checked_at || null,
-      next: next && {
-        level: level + 1,
-        hold: formatBalance(V(next.hold)),
-        reward: formatBalance(V(next.reward))
-      },
-      levels: MINER_LEVELS.map((l, i) => ({
-        level: i + 1, hold: formatBalance(V(l.hold)), reward: formatBalance(V(l.reward))
-      }))
+      next: next ? levelView(level + 1) : null
     },
     checkin: {
       available: !(user.last_checkin_day >= today),
@@ -693,6 +711,13 @@ const routes = {
   }),
 
   "GET /api/health": async () => ({ status: "healthy", service: "VOLTIX Mining API" }),
+
+  // The full 500-level table (static).
+  "GET /api/levels": async () => ({
+    max_level: MAX_LEVEL,
+    leagues: LEAGUES.map((name, i) => ({ name, from: i * 100 + 1, to: (i + 1) * 100 })),
+    levels: MINER_LEVELS.map((_, i) => levelView(i + 1))
+  }),
 
   // 1. Client asks for a payload, passes it to TON Connect as tonProof.
   "POST /api/auth/payload": async ({ db }) => {

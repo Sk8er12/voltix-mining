@@ -249,12 +249,40 @@ button:disabled{cursor:default}
 .lv-hold b{font-family:var(--display);color:var(--text);font-size:15px}
 .lv-next{color:var(--muted);font-size:12px;margin-top:8px}
 .lv-next b{color:var(--cyan)}
-.lv-table{margin-top:10px;border-radius:14px;overflow:hidden;border:1px solid rgba(255,255,255,.06)}
-.lv-row{display:grid;grid-template-columns:52px 1fr auto;gap:8px;padding:9px 12px;font-size:12px;border-bottom:1px solid rgba(255,255,255,.05);font-variant-numeric:tabular-nums}
-.lv-row:last-child{border-bottom:0}
-.lv-row.cur{background:linear-gradient(90deg,rgba(0,229,255,.16),rgba(139,92,255,.1));font-weight:800}
-.lv-row .l{font-family:var(--display);color:var(--cyan);font-weight:800}
-.lv-row .r{color:var(--ok);font-weight:700}
+.lv-league{display:inline-block;margin-left:6px;font-size:11px;font-weight:800;letter-spacing:.5px;padding:2px 8px;border-radius:20px;background:rgba(255,255,255,.07);color:var(--muted);vertical-align:2px}
+.lv-badge span.long{font-size:18px}
+.lv-all{width:100%;margin-top:12px;padding:12px;border-radius:14px;border:1px solid var(--edge);background:rgba(255,255,255,.04);font-weight:800;font-size:13px}
+
+/* levels sheet */
+.sheet{position:fixed;inset:0;z-index:30;display:flex;align-items:flex-end;justify-content:center;background:rgba(2,3,10,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);animation:fade .2s ease}
+@keyframes fade{from{opacity:0}}
+.sheet-panel{width:100%;max-width:460px;max-height:88vh;display:flex;flex-direction:column;border-radius:26px 26px 0 0;padding:18px 16px calc(16px + env(safe-area-inset-bottom));
+ background:linear-gradient(180deg,#0e1433,#070a1c);border:1px solid var(--edge);border-bottom:0;box-shadow:0 -20px 60px rgba(0,0,0,.6);animation:up .3s cubic-bezier(.2,.8,.2,1)}
+@keyframes up{from{transform:translateY(40px);opacity:0}}
+.sheet-head{display:flex;align-items:center;gap:10px}
+.sheet-head .t{flex:1;font-family:var(--display);font-size:18px;font-weight:800}
+.sheet-head button{width:38px;height:38px;border-radius:12px;border:1px solid var(--edge);background:rgba(255,255,255,.05);font-size:16px}
+.lg-chips{display:flex;gap:6px;overflow-x:auto;margin:14px -16px 10px;padding:0 16px;scrollbar-width:none}
+.lg-chips::-webkit-scrollbar{display:none}
+.lg-chips button{flex:none;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);border-radius:20px;padding:8px 12px;font-size:12px;font-weight:800;color:var(--muted);white-space:nowrap}
+.lg-chips button.on{background:linear-gradient(100deg,var(--blue),var(--cyan));color:#fff;border-color:transparent}
+.sheet-head,.lg-chips,.lv-status,.sheet-panel .cta{flex:none}
+.lv-list{flex:1;min-height:0;overflow-y:auto;margin:0 -4px;padding:0 4px;-webkit-overflow-scrolling:touch;position:relative}
+.lv-item{display:flex;align-items:center;gap:10px;padding:11px 12px;margin-bottom:6px;border-radius:14px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.05);font-variant-numeric:tabular-nums}
+.lv-item.cur{border-color:var(--edge-hi);background:linear-gradient(90deg,rgba(0,229,255,.14),rgba(139,92,255,.1));box-shadow:0 0 18px -6px var(--cyan)}
+.lv-item.done{opacity:.6}
+.lv-item .e{font-size:18px;width:22px;text-align:center}
+.lv-item .m{flex:1;min-width:0}
+.lv-item .n{font-weight:800;font-size:14px}
+.lv-item .s{color:var(--muted);font-size:12px;margin-top:2px}
+.lv-item .r{text-align:right}
+.lv-item .h{color:var(--gold);font-family:var(--display);font-weight:800;font-size:13px}
+.lv-item .d{color:var(--ok);font-size:12px;margin-top:3px}
+.lv-status{margin-top:10px;padding:12px 14px;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.lv-status .k{color:var(--muted);font-size:11px}
+.lv-status .v{font-family:var(--display);font-weight:800;font-size:14px;margin-top:3px}
+.lv-status .v.ok{color:var(--ok)}
+.sheet-panel .cta{margin-top:12px;padding:15px}
 
 /* daily */
 .daily .head{display:flex;align-items:center;gap:12px}
@@ -481,7 +509,7 @@ button:disabled{cursor:default}
     <div class="lv-head">
      <div class="lv-badge"><span id="lvNum">1</span><small>LVL</small></div>
      <div class="txt">
-      <div class="ttl">Miner level <span id="lvOf">1 / 10</span></div>
+      <div class="ttl">Level <span id="lvOf">1 / 500</span><span class="lv-league" id="lvLeague">🥉 Bronze</span></div>
       <div class="sm" id="lvRate">4.17 VOLTIX / hour</div>
      </div>
      <button class="lv-refresh" id="lvRefresh" title="Refresh VTX balance" aria-label="Refresh VTX balance">↻</button>
@@ -489,8 +517,7 @@ button:disabled{cursor:default}
     <div class="lv-hold"><span>VTX in your wallet</span><b id="lvHeld">0</b></div>
     <div class="bar"><i id="lvBar"></i></div>
     <div class="lv-next" id="lvNext"></div>
-    <button class="link" id="lvToggle" style="margin-top:8px">All levels ▾</button>
-    <div class="lv-table hidden" id="lvTable"></div>
+    <button class="lv-all" id="lvToggle">🏆 All 500 levels &amp; leagues</button>
     <p class="hint">Your level depends on how many VTX you hold in your connected wallet. Hold more — mine faster. Move or sell them and the level drops.</p>
    </div>
 
@@ -617,6 +644,20 @@ button:disabled{cursor:default}
   <svg viewBox="0 0 24 24"><path d="M20 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h15v13H5a2 2 0 0 1-2-2V5"/><path d="M16 14h.01"/></svg>Wallet
  </button>
 </nav>
+
+<div class="sheet hidden" id="lvSheet">
+ <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="All levels">
+  <div class="sheet-head"><div class="t grad-text">🏆 500 LEVELS</div><button id="lvClose" aria-label="Close">✕</button></div>
+  <div class="lg-chips" id="lgChips"></div>
+  <div class="lv-list" id="lvList"></div>
+  <div class="lv-status">
+   <div><div class="k">Level</div><div class="v" id="stLevel">1 / 500</div></div>
+   <div><div class="k">Speed</div><div class="v" id="stSpeed">15/h</div></div>
+   <div style="text-align:right"><div class="k">Boost</div><div class="v ok" id="stBoost">×1</div></div>
+  </div>
+  <button class="cta" id="lvOk">Got it</button>
+ </div>
+</div>
 
 <div class="burst" id="burst"></div>
 <div class="toast hidden" id="toast"></div>
@@ -854,41 +895,93 @@ function render(){
  tick();
 }
 
+const LEAGUE_ICON = { Bronze: "🥉", Silver: "🥈", Gold: "🥇", Diamond: "💎", Legend: "👑" };
+const rate = v => fmt(v, v >= 1000 ? 0 : 1);
+const boostTxt = b => "×" + (b >= 100 ? fmt(b, 0) : Number(b).toLocaleString("en-US", { maximumFractionDigits: 2 }));
+
 function renderLevel(){
  const m = me.miner;
- if (!m || !m.levels) return;
- const cur = m.levels[m.level - 1];
+ if (!m || !m.per_hour) return;
  $("lvNum").textContent = m.level;
+ $("lvNum").classList.toggle("long", m.level >= 100);
  $("lvOf").textContent = `${m.level} / ${m.max_level}`;
- $("lvRate").textContent = `${fmt(Number(cur.reward) / 24, 2)} VOLTIX / hour`;
+ $("lvLeague").textContent = `${LEAGUE_ICON[m.league] || ""} ${m.league}`;
+ $("lvRate").textContent = `${rate(m.per_hour)} VOLTIX / hour · ${boostTxt(m.boost)}`;
  const held = Number(m.held);
  $("lvHeld").textContent = `${fmt(held, held < 1000 ? 2 : 0)} VTX`;
  if (m.next) {
-  const from = Number(cur.hold), to = Number(m.next.hold);
+  const from = Number(m.hold), to = Number(m.next.hold);
   $("lvBar").style.width = Math.max(2, Math.min(100, (held - from) / (to - from) * 100)) + "%";
-  $("lvNext").innerHTML = `Hold <b>${fmt(to, 0)} VTX</b> → level ${m.next.level} · <b>${fmt(Number(m.next.reward) / 24, 2)}/h</b> (${fmt(Math.max(0, to - held), 0)} more)`;
+  $("lvNext").innerHTML = `Hold <b>${fmt(to, 0)} VTX</b> → level ${m.next.level} · <b>${rate(m.next.per_hour)}/h</b> (${fmt(Math.max(0, to - held), 0)} more)`;
  } else {
   $("lvBar").style.width = "100%";
   $("lvNext").innerHTML = "<b>Max level reached</b> — top mining speed";
  }
- const table = $("lvTable");
- table.innerHTML = "";
- for (const l of m.levels) {
-  const row = document.createElement("div");
-  row.className = "lv-row" + (l.level === m.level ? " cur" : "");
-  row.innerHTML = `<span class="l"></span><span></span><span class="r"></span>`;
-  row.children[0].textContent = "LV " + l.level;
-  row.children[1].textContent = Number(l.hold) ? `≥ ${fmt(l.hold, 0)} VTX` : "Start";
-  row.children[2].textContent = `${fmt(Number(l.reward) / 24, 2)}/h`;
-  table.appendChild(row);
- }
 }
 
-$("lvToggle").addEventListener("click", () => {
- const t = $("lvTable");
- t.classList.toggle("hidden");
- $("lvToggle").textContent = t.classList.contains("hidden") ? "All levels ▾" : "Hide levels ▴";
-});
+// ---- all-levels sheet
+let levelsData = null, lgFilter = 0;
+async function openLevels(){
+ $("lvSheet").classList.remove("hidden");
+ document.body.style.overflow = "hidden";
+ const m = me.miner;
+ $("stLevel").textContent = `${m.level} / ${m.max_level}`;
+ $("stSpeed").textContent = `${rate(m.per_hour)}/h`;
+ $("stBoost").textContent = boostTxt(m.boost);
+ lgFilter = Math.min(4, Math.floor((m.level - 1) / 100)) + 1;    // open on your league
+ if (!levelsData) {
+  $("lvList").innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+  try { levelsData = await api("/api/levels"); }
+  catch (e) { toast(e.message, true); closeLevels(); return; }
+ }
+ renderLevelChips();
+ renderLevelList(true);
+}
+function closeLevels(){
+ $("lvSheet").classList.add("hidden");
+ document.body.style.overflow = "";
+}
+function renderLevelChips(){
+ const box = $("lgChips");
+ box.innerHTML = "";
+ const items = [{ label: "All", i: 0 }, ...levelsData.leagues.map((l, k) => ({ label: `${LEAGUE_ICON[l.name]} ${l.from}–${l.to}`, i: k + 1 }))];
+ for (const it of items) {
+  const b = document.createElement("button");
+  b.textContent = it.label;
+  b.classList.toggle("on", it.i === lgFilter);
+  b.addEventListener("click", () => { lgFilter = it.i; renderLevelChips(); renderLevelList(true); haptic("light"); });
+  box.appendChild(b);
+ }
+ const on = box.querySelector(".on");
+ if (on) box.scrollLeft = Math.max(0, on.offsetLeft - (box.clientWidth - on.offsetWidth) / 2);
+}
+function renderLevelList(scrollToMine){
+ const list = $("lvList");
+ const cur = me.miner.level;
+ const lv = levelsData.levels.filter(l => !lgFilter || Math.floor((l.level - 1) / 100) + 1 === lgFilter);
+ const frag = document.createDocumentFragment();
+ let mine = null;
+ for (const l of lv) {
+  const row = document.createElement("div");
+  row.className = "lv-item" + (l.level === cur ? " cur" : l.level < cur ? " done" : "");
+  row.innerHTML = `<div class="e"></div><div class="m"><div class="n"></div><div class="s"></div></div><div class="r"><div class="h"></div><div class="d"></div></div>`;
+  row.querySelector(".e").textContent = LEAGUE_ICON[l.league];
+  row.querySelector(".n").textContent = `Lv. ${l.level}` + (l.level === cur ? " · you" : "");
+  row.querySelector(".s").textContent = `${rate(l.per_hour)} VOLTIX/h · ${boostTxt(l.boost)}`;
+  row.querySelector(".h").textContent = Number(l.hold) ? `${fmt(l.hold, 0)} VTX` : "Free";
+  row.querySelector(".d").textContent = `+${fmt(l.reward, 0)} / day`;
+  if (l.level === cur) mine = row;
+  frag.appendChild(row);
+ }
+ list.innerHTML = "";
+ list.appendChild(frag);
+ list.scrollTop = 0;
+ if (scrollToMine && mine) list.scrollTop = Math.max(0, mine.offsetTop - list.clientHeight / 2 + mine.offsetHeight / 2);
+}
+$("lvToggle").addEventListener("click", openLevels);
+$("lvClose").addEventListener("click", closeLevels);
+$("lvOk").addEventListener("click", closeLevels);
+$("lvSheet").addEventListener("click", e => { if (e.target.id === "lvSheet") closeLevels(); });
 
 $("lvRefresh").addEventListener("click", e => withButton(e.currentTarget, async () => {
  const before = me.miner.level;

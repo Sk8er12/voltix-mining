@@ -45,9 +45,13 @@ async function ensureBotSetup(env) {
   console.log("bot setup", JSON.stringify({ webhook: set.ok || set.description, menu: menu.ok || menu.description }));
 }
 
-// VOLTIX per day by miner level (same table as the app's MINER_LEVELS).
-const DAILY_BY_LEVEL = [100, 120, 145, 175, 210, 250, 300, 360, 430, 520];
+// VOLTIX per day by miner level — same formula as the app (public/_worker.js MINER_LEVELS).
 const DAY = 86400;
+const dailyByLevel = lvl => {
+  const l = Math.min(Math.max(lvl || 1, 1), 500);
+  const boost = Math.round((1 + 0.3 * (l - 1) + 0.05 * (l - 1) ** 2) * 100) / 100;
+  return Math.round(Math.round(15 * boost * 10) / 10 * 24 * 10) / 10;
+};
 
 // Mining runs 24/7. Once a user hasn't collected for a full day, remind them
 // (at most once a day while they stay away).
@@ -69,7 +73,7 @@ export async function notifyFinished(env) {
     ).bind(t, row.id, row.reminded_at).run();
     if (!mark.meta.changes) continue;
 
-    const perDay = DAILY_BY_LEVEL[Math.min(Math.max(row.miner_level || 1, 1), DAILY_BY_LEVEL.length) - 1];
+    const perDay = dailyByLevel(row.miner_level);
     const mined = Math.floor((row.mining_bank_micro || 0) / 1_000_000 + (t - row.mining_since) * perDay / DAY);
     const res = await tg(env, "sendMessage", {
       chat_id: row.telegram_id,
