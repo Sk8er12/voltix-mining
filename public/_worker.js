@@ -698,6 +698,36 @@ const routes = {
     return { message: "Telegram linked" };
   },
 
+  // Bot health check (no secrets): bot username, webhook target and Telegram's last delivery error.
+  // Re-registers the webhook and menu button if they don't point here.
+  "GET /api/telegram/status": async ({ env }) => {
+    if (!env.BOT_TOKEN) throw new HttpError("Telegram bot is not configured", 503);
+    const me = await tgCall(env.BOT_TOKEN, "getMe", {});
+    if (!me.ok) return { bot: null, error: me.description || "getMe failed (token invalid?)" };
+    const hookUrl = `${APP_URL}/api/telegram/webhook`;
+    let info = await tgCall(env.BOT_TOKEN, "getWebhookInfo", {});
+    let setup = null;
+    if (!info.ok || info.result.url !== hookUrl) {
+      const set = await tgCall(env.BOT_TOKEN, "setWebhook", {
+        url: hookUrl, secret_token: await webhookSecret(env.BOT_TOKEN), allowed_updates: ["message"]
+      });
+      const menu = await tgCall(env.BOT_TOKEN, "setChatMenuButton", {
+        menu_button: { type: "web_app", text: "Open VOLTIX", web_app: { url: APP_URL } }
+      });
+      setup = { webhook: set.ok || set.description, menu: menu.ok || menu.description };
+      info = await tgCall(env.BOT_TOKEN, "getWebhookInfo", {});
+    }
+    const w = info.result || {};
+    return {
+      bot: me.result.username,
+      webhook: w.url || null,
+      pending_updates: w.pending_update_count || 0,
+      last_error: w.last_error_message || null,
+      last_error_at: w.last_error_date || null,
+      setup
+    };
+  },
+
   // Bot webhook (registered automatically by the notifier worker).
   "POST /api/telegram/webhook": async ({ request, env }) => {
     if (!env.BOT_TOKEN) throw new HttpError("Not configured", 503);
