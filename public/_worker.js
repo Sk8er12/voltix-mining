@@ -69,6 +69,17 @@ const TOKEN = {
 // Optional variable ADMIN_WALLETS: comma separated raw addresses (0:abc...) allowed
 // to approve / reject withdrawals.
 
+
+// VTX sale: the user pays TON to SALE_WALLET with an order comment, the payment is found
+// on-chain, and an admin sends the VTX by hand (no wallet key on the server).
+// Sales are off until the SALE_WALLET secret is set.
+const SALE_RATE = 127;                      // VTX per 1 TON
+const SALE_MIN = 1_000_000_000;             // 1 TON
+const SALE_MAX = 100_000_000_000;           // 100 TON per order
+const SALE_DUST = 100_000_000;              // payments under 0.1 TON are ignored
+const SALE_LOOKBACK = 7 * 24 * 60 * 60;     // late payments are still matched for a week
+const SALE_ORDERS_PER_DAY = 20;
+
 // One-time tasks. "Active" friends are invited users who claimed at least one mining reward.
 const TASKS = [
   { id: "first_claim", title: "Claim your first mining reward", reward: 25, goal: 1, stat: "claims" },
@@ -703,6 +714,122 @@ async function notifyTelegram(env, telegramId, text) {
   } catch (e) { console.warn("telegram notify failed", e.message); }
 }
 
+// ---------------------------------------------------------------- VTX sale
+
+const formatTon = nano => (Number(nano) / 1e9).toFixed(4);
+const vtxForTon = (nano, rate) => Math.floor(nano / 1000) * rate;   // VTX base units
+
+// Raw form of SALE_WALLET ("0:..." or a friendly UQ/EQ address), or null if sales are off.
+function saleWallet(env) {
+  const v = String(env.SALE_WALLET || "").trim();
+  if (!v) return null;
+  try {
+    if (v.includes(":")) return rawAddress(parseRawAddress(v));
+    const b = fromBase64(v);
+    const c = crc16(b.slice(0, 34));
+    if (b.length !== 36 || b[34] !== c >> 8 || b[35] !== (c & 0xff) || b[0] & 0x80) throw new Error("bad address");
+    return rawAddress({ workchain: b[1] === 0xff ? -1 : b[1], hash: b.slice(2, 34) });
+  } catch {
+    console.error("SALE_WALLET is not a valid mainnet address");
+    return null;
+  }
+}
+
+function requireSaleWallet(env) {
+  const w = saleWallet(env);
+  if (!w) throw new HttpError("VTX sale is not open", 503);
+  return w;
+}
+
+// Text comment as a single-cell BOC (base64), for TON Connect's "payload".
+function commentBoc(text) {
+  const data = concat(new Uint8Array(4), enc.encode(text));
+  return btoa(String.fromCharCode(...concat(
+    new Uint8Array([0xb5, 0xee, 0x9c, 0x72, 1, 1, 1, 1, 0, data.length + 2, 0, 0, data.length * 2]), data
+  )));
+}
+
+// Text comment of an incoming message body, or null.
+async function readComment(boc) {
+  try {
+    const cell = await parseBoc(fromBase64(boc));
+    if (cell.bits < 32 || cell.bits % 8 || cell.data.slice(0, 4).some(Boolean)) return null;
+    return new TextDecoder().decode(cell.data.slice(4)).trim();
+  } catch { return null; }
+}
+
+// Finds TON payments for open orders. Safe to call any number of times, concurrently.
+async function syncPurchases(env, db) {
+  const wallet = saleWallet(env);
+  if (!wallet) return;
+  const oldest = await db.prepare(
+    "SELECT MIN(created_at) AS t FROM purchases WHERE status = 'awaiting' AND created_at > ?"
+  ).bind(now() - SALE_LOOKBACK).first();
+  if (!oldest.t) return;
+
+  for (let page = 0; page < 5; page++) {
+    let txs;
+    try {
+      const res = await fetch("https://toncenter.com/api/v3/transactions?sort=desc&limit=100" +
+        `&offset=${page * 100}&start_utime=${oldest.t - 60}&account=${encodeURIComponent(wallet)}`,
+        { headers: env.TONCENTER_API_KEY ? { "X-API-Key": env.TONCENTER_API_KEY } : {} });
+      if (!res.ok) { console.warn("toncenter", res.status); return; }
+      txs = (await res.json()).transactions || [];
+    } catch (e) { console.warn("toncenter failed", e.message); return; }
+
+    for (const tx of txs) {
+      const m = tx.in_msg;
+      if (!m || !m.source || m.bounced || tx.emulated || !tx.mc_block_seqno) continue;
+      const nano = Number(m.value);
+      if (!Number.isSafeInteger(nano) || nano < SALE_DUST) continue;
+      const memo = await readComment(m.message_content && m.message_content.body);
+      if (!memo || !/^VTX-[0-9A-F]{16}$/.test(memo)) continue;
+
+      const order = await db.prepare("SELECT * FROM purchases WHERE memo = ?").bind(memo).first();
+      if (!order || tx.now < order.created_at - 60) continue;
+      const vtx = vtxForTon(nano, order.rate);   // pays for what really arrived
+      const hit = await db.prepare(`
+        UPDATE purchases SET status = 'paid', paid_at = ?, ton_tx_hash = ?, ton_nano = ?, vtx_units = ?
+        WHERE id = ? AND status = 'awaiting'
+      `).bind(tx.now, tx.hash, nano, vtx, order.id).run();
+      if (hit.meta.changes) continue;
+      // Same comment paid twice: keep it as its own order. A known tx hash is ignored.
+      await db.prepare(`
+        INSERT OR IGNORE INTO purchases
+          (user_id, wallet_address, memo, rate, ton_nano, vtx_units, status, created_at, paid_at, ton_tx_hash)
+        SELECT ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?
+        WHERE NOT EXISTS (SELECT 1 FROM purchases WHERE ton_tx_hash = ?)
+      `).bind(order.user_id, order.wallet_address, `${memo}#${tx.lt}`, order.rate, nano, vtx,
+        order.created_at, tx.now, tx.hash, tx.hash).run();
+    }
+    if (txs.length < 100) return;
+  }
+}
+
+function purchaseView(p) {
+  return {
+    id: p.id, memo: p.memo, status: p.status,
+    ton: formatTon(p.ton_nano),
+    vtx: formatBalance(p.vtx_units),
+    vtx_units: String(p.vtx_units),
+    wallet: friendlyAddress(p.wallet_address),
+    created_at: p.created_at, paid_at: p.paid_at, delivered_at: p.delivered_at,
+    ton_tx_hash: p.ton_tx_hash, tx_hash: p.tx_hash
+  };
+}
+
+async function purchaseList(env, db, user) {
+  // Unpaid orders are hidden after an hour (a late payment still brings them back).
+  const { results } = await db.prepare(`
+    SELECT * FROM purchases WHERE user_id = ? AND (status <> 'awaiting' OR created_at > ?) ORDER BY id DESC LIMIT 30
+  `).bind(user.id, now() - 3600).all();
+  return {
+    enabled: !!saleWallet(env),
+    rate: SALE_RATE, min: SALE_MIN / 1e9, max: SALE_MAX / 1e9,
+    purchases: results.map(purchaseView)
+  };
+}
+
 // ---------------------------------------------------------------- routes
 
 const routes = {
@@ -1014,6 +1141,70 @@ const routes = {
         `✅ <b>Withdrawal sent!</b>\n\n${Number(formatBalance(w.net_micro)).toLocaleString("en-US")} VOLTIX are on the way to your wallet.`);
     }
     return { message: status === "paid" ? "Marked as paid" : "Rejected and refunded", withdrawal: withdrawalView(w) };
+  },
+
+  // VTX sale: price, limits and the user's orders.
+  "GET /api/buy": async ({ request, env, db }) => {
+    const { user } = await authUser(request, db);
+    const open = await db.prepare(
+      "SELECT 1 AS x FROM purchases WHERE user_id = ? AND status = 'awaiting' AND created_at > ? LIMIT 1"
+    ).bind(user.id, now() - SALE_LOOKBACK).first();
+    if (open) await syncPurchases(env, db);
+    return purchaseList(env, db, user);
+  },
+
+  // { ton } -> order + the TON Connect message to sign.
+  "POST /api/buy": async ({ request, env, db }) => {
+    const { user } = await authUser(request, db);
+    const wallet = requireSaleWallet(env);
+    const body = await readJson(request);
+    const nano = parseAmount(body.ton) * 1000;        // 6 decimals -> nanoTON
+    if (nano < SALE_MIN) throw new HttpError(`Minimum is ${SALE_MIN / 1e9} TON`);
+    if (nano > SALE_MAX) throw new HttpError(`Maximum is ${SALE_MAX / 1e9} TON per order`);
+    const t = now();
+    const recent = await db.prepare(
+      "SELECT COUNT(*) AS n FROM purchases WHERE user_id = ? AND status = 'awaiting' AND created_at > ?"
+    ).bind(user.id, t - 86400).first();
+    if (recent.n >= SALE_ORDERS_PER_DAY) throw new HttpError("Too many unpaid orders, try again tomorrow", 429);
+
+    const memo = "VTX-" + randomHex(8).toUpperCase();
+    const r = await db.prepare(`
+      INSERT INTO purchases (user_id, wallet_address, memo, rate, ton_nano, vtx_units, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'awaiting', ?)
+    `).bind(user.id, user.wallet_address, memo, SALE_RATE, nano, vtxForTon(nano, SALE_RATE), t).run();
+    const p = await db.prepare("SELECT * FROM purchases WHERE id = ?").bind(r.meta.last_row_id).first();
+    return {
+      purchase: purchaseView(p),
+      transaction: {
+        validUntil: t + 300, network: MAINNET, from: user.wallet_address,
+        messages: [{ address: friendlyAddress(wallet), amount: String(nano), payload: commentBoc(memo) }]
+      }
+    };
+  },
+
+  // Admin: paid orders waiting for their VTX.
+  "GET /api/admin/purchases": async ({ request, env, db }) => {
+    await requireAdmin(request, env, db);
+    await syncPurchases(env, db);
+    const { results } = await db.prepare("SELECT * FROM purchases WHERE status = 'paid' ORDER BY id LIMIT 100").all();
+    return { token: TOKEN, pending: results.map(purchaseView) };
+  },
+
+  // Admin: { id, tx_hash? } after sending the VTX.
+  "POST /api/admin/purchases/process": async ({ request, env, db }) => {
+    await requireAdmin(request, env, db);
+    const body = await readJson(request);
+    const id = Number(body.id);
+    if (!Number.isSafeInteger(id)) throw new HttpError("Invalid id");
+    const done = await db.prepare(
+      "UPDATE purchases SET status = 'delivered', delivered_at = ?, tx_hash = ? WHERE id = ? AND status = 'paid'"
+    ).bind(now(), body.tx_hash ? String(body.tx_hash).trim().slice(0, 200) : null, id).run();
+    if (!done.meta.changes) throw new HttpError("Order is not waiting for delivery", 409);
+    const p = await db.prepare("SELECT * FROM purchases WHERE id = ?").bind(id).first();
+    const owner = await db.prepare("SELECT telegram_id FROM users WHERE id = ?").bind(p.user_id).first();
+    await notifyTelegram(env, owner && owner.telegram_id,
+      `✅ <b>${Number(formatBalance(p.vtx_units)).toLocaleString("en-US")} VTX sent</b> to your wallet.`);
+    return { message: "Marked as delivered", purchase: purchaseView(p) };
   },
 
   "POST /api/checkin": async ({ request, db }) => {

@@ -78,6 +78,11 @@ Store it as a **secret** — plain variables set in the dashboard are replaced o
 npx wrangler pages secret put ADMIN_WALLETS --project-name voltix-mining
 ```
 
+### VTX sale
+
+Off until the `SALE_WALLET` secret (the wallet that receives TON) is set and `migrations/0007_purchases.sql`
+is applied. Payments are matched on-chain by the order comment; VTX are sent manually from the admin block.
+
 ## Local development
 
 ```bash
@@ -104,6 +109,8 @@ All responses are JSON `{ success, ... }`. Authenticated routes need `Authorizat
 | GET  | `/api/withdrawals` | ✓ | wallet tab: rules, cooldown, history, VTX token info |
 | POST | `/api/withdraw` | ✓ | `{ amount }` request a payout (min 10,000, 5% fee, 1 per 48 h) |
 | GET/POST | `/api/admin/withdrawals[/process]` | admin | pending payouts; mark paid / reject (refund) |
+| GET/POST | `/api/buy` | ✓ | VTX sale: price and orders / create an order (127 VTX per TON) |
+| GET/POST | `/api/admin/purchases[/process]` | admin | paid orders; mark as sent |
 | POST | `/api/checkin` | ✓ | daily bonus: 10 VOLTIX × streak day (max 70) |
 | GET  | `/api/tasks` | ✓ | one-time tasks with progress |
 | POST | `/api/tasks/claim` | ✓ | `{ task_id }` claim a completed task |

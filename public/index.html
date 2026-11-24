@@ -593,6 +593,17 @@ body.has-nav[data-tab="mine"] .cover-wrap{display:block}
     <p class="hint">Withdrawals are sent to this wallet. To use another one, disconnect and sign in with it.</p>
    </div>
 
+   <div class="glass card hidden" id="buyCard">
+    <div class="label">Buy VTX</div>
+    <div class="amt-row"><div class="label">You pay</div><div class="label" id="bRate"></div></div>
+    <div class="amt-box"><input id="bAmount" inputmode="decimal" autocomplete="off" placeholder="1" aria-label="TON amount"><b>TON</b></div>
+    <div class="chips" id="bChips"><button data-ton="1">1</button><button data-ton="5">5</button><button data-ton="10">10</button><button data-ton="25">25</button><button data-ton="50">50</button></div>
+    <div class="receive"><span>You receive</span><b id="bGet">0 VTX</b></div>
+    <button class="cta" id="bSubmit">Buy VTX</button>
+    <p class="hint">VTX are sent by hand to your connected wallet within 1–24 hours. VTX is an unverified token and is not traded on any exchange: you may not be able to sell it. Most of the supply is held by one wallet. Not an investment, no profit is promised. Network fee is extra.</p>
+    <ul class="list" id="bList"></ul>
+   </div>
+
    <div class="glass card">
     <div class="label">Withdraw VOLTIX</div>
     <ul class="rules">
@@ -621,6 +632,8 @@ body.has-nav[data-tab="mine"] .cover-wrap{display:block}
    <div class="glass card admin hidden" id="adminCard">
     <div class="label" style="color:var(--pink)">Admin · pending payouts</div>
     <div id="adminList"></div>
+    <div class="label" style="color:var(--pink);margin-top:18px">Admin · VTX orders to send</div>
+    <div id="adminBuys"></div>
    </div>
   </div>
 
@@ -890,6 +903,7 @@ function openTab(tab){
  if (tab === "history") loadHistory();
  if (tab === "friends") loadReferrals();
  if (tab === "tasks") loadTasks();
+ if (tab === "wallet") loadBuy();
  if (tab === "wallet") loadWallet();
  haptic("light");
  window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
@@ -1293,7 +1307,7 @@ async function loadWallet(){
   wallet = await api("/api/withdrawals");
   walletOffset = wallet.now - Date.now() / 1000;
   renderWallet();
-  if (wallet.is_admin) loadAdmin();
+  if (wallet.is_admin) { loadAdmin(); loadAdminBuys(); }
  } catch (e) { toast(e.message, true); }
 }
 
@@ -1382,7 +1396,7 @@ function walletTick(){
 setInterval(walletTick, 1000);
 $("wAmount").addEventListener("input", walletTick);
 
-document.querySelectorAll(".chips button").forEach(b => b.addEventListener("click", () => {
+document.querySelectorAll(".chips button[data-amt]").forEach(b => b.addEventListener("click", () => {
  if (!wallet) return;
  const v = b.dataset.amt === "max" ? Math.floor(Number(wallet.balance) * 100) / 100 : Number(b.dataset.amt);
  $("wAmount").value = String(v);
@@ -1466,6 +1480,108 @@ async function loadAdmin(){
    box.appendChild(row);
   }
  } catch (e) { $("adminCard").classList.add("hidden"); }
+}
+
+// ---------------------------------------------------------------- buy VTX for TON
+let sale = null;
+const BUY_STATUS = { awaiting: "Waiting for payment", paid: "Paid · sending soon", delivered: "Sent" };
+const BUY_CLASS = { awaiting: "pending", paid: "pending", delivered: "paid" };
+
+async function loadBuy(){
+ try { sale = await api("/api/buy"); renderBuy(); } catch (e) { console.warn(e.message); }
+}
+function buyAmount(){
+ const v = $("bAmount").value.trim().replace(",", ".");
+ return /^\d+(\.\d{0,6})?$/.test(v) ? Number(v) : NaN;
+}
+function buyTick(){
+ if (!sale) return;
+ const a = buyAmount(), btn = $("bSubmit");
+ $("bGet").textContent = `${fmt(a > 0 ? a * sale.rate : 0, 2)} VTX`;
+ if (btn.querySelector(".spinner")) return;
+ btn.disabled = !(a >= sale.min && a <= sale.max);
+ btn.textContent = !(a > 0) ? "Enter amount" : a < sale.min ? `Minimum ${sale.min} TON` : a > sale.max ? `Maximum ${sale.max} TON` : "Buy VTX";
+}
+function renderBuy(){
+ $("buyCard").classList.toggle("hidden", !sale.enabled && !sale.purchases.length);
+ for (const id of ["bSubmit", "bChips"]) $(id).classList.toggle("hidden", !sale.enabled);
+ $("bRate").textContent = `1 TON = ${sale.rate} VTX`;
+ const list = $("bList");
+ list.innerHTML = "";
+ for (const p of sale.purchases) {
+  const li = document.createElement("li");
+  li.innerHTML = `<div><div class="n"></div><div class="t"></div></div><div class="r"><span class="badge"></span></div>`;
+  li.querySelector(".n").textContent = `${fmt(p.vtx, 2)} VTX · ${fmt(p.ton, 2)} TON`;
+  li.querySelector(".t").textContent = date(p.created_at);
+  const b = li.querySelector(".badge");
+  b.textContent = BUY_STATUS[p.status] || p.status;
+  b.classList.add(BUY_CLASS[p.status] || "pending");
+  list.appendChild(li);
+ }
+ buyTick();
+}
+$("bAmount").addEventListener("input", buyTick);
+document.querySelectorAll("#bChips button").forEach(b => b.addEventListener("click", () => {
+ $("bAmount").value = b.dataset.ton; haptic("light"); buyTick();
+}));
+// Orders waiting for their payment: look for it every 10 s while the wallet tab is open.
+setInterval(() => {
+ if (activeTab === "wallet" && token && document.visibilityState === "visible" && sale &&
+  sale.purchases.some(p => p.status === "awaiting")) loadBuy();
+}, 10000);
+
+$("bSubmit").addEventListener("click", async () => {
+ const btn = $("bSubmit");
+ if (btn.disabled) return;
+ btn.disabled = true;
+ btn.innerHTML = '<span class="spinner"></span>Confirm in your wallet';
+ try {
+  if (!tonUI || !tonUI.account) throw new Error("Wallet is disconnected — sign in again");
+  if (tonUI.account.address !== me.wallet) throw new Error("Connected wallet differs from your account");
+  const r = await api("/api/buy", { method: "POST", body: { ton: $("bAmount").value.trim().replace(",", ".").replace(/\.$/, "") } });
+  await tonUI.sendTransaction(r.transaction);
+  $("bAmount").value = "";
+  toast("Payment sent — waiting for the blockchain");
+ } catch (e) {
+  toast(/reject|cancel|declin|abort|not sent|closed/i.test(e.message) ? "Payment cancelled" : e.message, true);
+ } finally {
+  btn.textContent = "Buy VTX";
+  await loadBuy();
+  buyTick();
+ }
+});
+
+async function loadAdminBuys(){
+ const box = $("adminBuys");
+ try {
+  const { pending, token: tk } = await api("/api/admin/purchases");
+  box.innerHTML = pending.length ? "" : '<div class="empty">No orders to send</div>';
+  for (const p of pending) {
+   const row = document.createElement("div");
+   row.className = "adm-row";
+   row.innerHTML = `<div class="top-line"><span class="a"></span><span class="t" style="color:var(--muted);font-weight:500;font-size:12px"></span></div>
+    <div class="w"></div>
+    <div class="acts"><a class="pill ton" target="_blank" rel="noopener">💎 Pay in Tonkeeper</a></div>
+    <div class="acts"><input placeholder="tx hash (optional)"><button class="pill">Sent</button></div>`;
+   row.querySelector(".a").textContent = `Send ${fmt(p.vtx, 2)} VTX`;
+   row.querySelector(".t").textContent = `#${p.id} · got ${fmt(p.ton, 2)} TON`;
+   row.querySelector(".w").textContent = p.wallet;
+   const url = `https://app.tonkeeper.com/transfer/${encodeURIComponent(p.wallet)}?jetton=${encodeURIComponent(tk.master)}&amount=${p.vtx_units}&text=${encodeURIComponent("VTX order #" + p.id)}`;
+   const pay = row.querySelector(".pill.ton");
+   pay.href = url;
+   pay.addEventListener("click", e => { e.preventDefault(); openExternal(url); });
+   const btn = row.querySelector("button"), input = row.querySelector("input");
+   btn.addEventListener("click", async () => {
+    if (!(await askConfirm(`Order #${p.id}: ${fmt(p.vtx, 2)} VTX already sent?`))) return;
+    withButton(btn, async () => {
+     const r = await api("/api/admin/purchases/process", { method: "POST", body: { id: p.id, tx_hash: input.value.trim() || undefined } });
+     toast(r.message);
+     loadAdminBuys();
+    });
+   });
+   box.appendChild(row);
+  }
+ } catch (e) { console.warn(e.message); }
 }
 
 async function refreshMe(){
