@@ -110,7 +110,7 @@ All responses are JSON `{ success, ... }`. Authenticated routes need `Authorizat
 | GET  | `/api/withdrawals` | ✓ | wallet tab: rules, cooldown, history, VTX token info |
 | POST | `/api/withdraw` | ✓ | `{ amount }` request a payout (min 2,000, 5% fee, 1 per 48 h) |
 | GET/POST | `/api/admin/withdrawals[/process]` | admin | pending payouts; mark paid / reject (refund) |
-| GET/POST | `/api/buy` | ✓ | VTX sale: price and orders / create an order (127 VTX per TON) |
+| GET/POST | `/api/buy` | ✓ | VTX sale: price and orders / create an order (127 VTX per TON, 1% less after every paid purchase, never below 50) |
 | GET/POST | `/api/admin/purchases[/process]` | admin | paid orders; mark as sent |
 | GET  | `/api/admin/stats` | admin | user counts: total, new and active in 24 h |
 | POST | `/api/checkin` | ✓ | daily bonus: 10 VOLTIX × streak day (max 70) |

@@ -73,7 +73,11 @@ const TOKEN = {
 // VTX sale: the user pays TON to SALE_WALLET with an order comment, the payment is found
 // on-chain, and an admin sends the VTX by hand (no wallet key on the server).
 // Sales are off until the SALE_WALLET secret is set.
-const SALE_RATE = 127;                      // VTX per 1 TON
+const SALE_RATE = 127;                      // starting price: VTX per 1 TON
+const SALE_RATE_MIN = 50;                   // the price never goes below this many VTX per TON
+const SALE_STEP = 0.99;                     // every paid purchase (for everyone): 1% less VTX per TON
+const SALE_STEP_SINCE = 1795548802;       // purchases paid before this do not count
+const SALE_PRICE_HOLD = 15 * 60;            // an order keeps its price this long
 const SALE_MIN = 1_000_000_000;             // 1 TON
 const SALE_MAX = 100_000_000_000;           // 100 TON per order
 const SALE_DUST = 100_000_000;              // payments under 0.1 TON are ignored
@@ -717,7 +721,19 @@ async function notifyTelegram(env, telegramId, text) {
 // ---------------------------------------------------------------- VTX sale
 
 const formatTon = nano => (Number(nano) / 1e9).toFixed(4);
-const vtxForTon = (nano, rate) => Math.floor(nano / 1000) * rate;   // VTX base units
+// VTX base units. Rates have at most 2 decimals, so this stays in exact integers.
+const vtxForTon = (nano, rate) => Math.floor(Math.floor(nano / 1000) * Math.round(rate * 100) / 100);
+
+// VTX per TON after n purchases.
+const rateAfter = n => Math.max(SALE_RATE_MIN, Math.round(SALE_RATE * 100 * SALE_STEP ** n) / 100);
+
+// How many paid purchases moved the price by time t. Payments under the minimum do not.
+async function purchaseCount(db, t) {
+  const r = await db.prepare(
+    "SELECT COUNT(*) AS n FROM purchases WHERE status <> 'awaiting' AND ton_nano >= ? AND paid_at >= ? AND paid_at <= ?"
+  ).bind(SALE_MIN, SALE_STEP_SINCE, t).first();
+  return r.n;
+}
 
 // Raw form of SALE_WALLET ("0:..." or a friendly UQ/EQ address), or null if sales are off.
 function saleWallet(env) {
@@ -811,42 +827,50 @@ async function findPayments(env, db) {
   ).bind(now() - SALE_LOOKBACK).first();
   if (!oldest.t) return;
 
+  const all = [];
   for (let page = 0; page < 5; page++) {
     let txs;
     try {
       const res = await fetch("https://toncenter.com/api/v3/transactions?sort=desc&limit=100" +
         `&offset=${page * 100}&start_utime=${oldest.t - 60}&account=${encodeURIComponent(wallet)}`,
         { headers: env.TONCENTER_API_KEY ? { "X-API-Key": env.TONCENTER_API_KEY } : {} });
-      if (!res.ok) { console.warn("toncenter", res.status); return; }
+      if (!res.ok) { console.warn("toncenter", res.status); break; }
       txs = (await res.json()).transactions || [];
-    } catch (e) { console.warn("toncenter failed", e.message); return; }
+    } catch (e) { console.warn("toncenter failed", e.message); break; }
+    all.push(...txs);
+    if (txs.length < 100) break;
+  }
 
-    for (const tx of txs) {
-      const m = tx.in_msg;
-      if (!m || !m.source || m.bounced || tx.emulated || !tx.mc_block_seqno) continue;
-      const nano = Number(m.value);
-      if (!Number.isSafeInteger(nano) || nano < SALE_DUST) continue;
-      const memo = await readComment(m.message_content && m.message_content.body);
-      if (!memo || !/^VTX-[0-9A-F]{16}$/.test(memo)) continue;
+  // Oldest first: every purchase lowers the rate of the next one.
+  for (const tx of all.reverse()) {
+    const m = tx.in_msg;
+    if (!m || !m.source || m.bounced || tx.emulated || !tx.mc_block_seqno) continue;
+    const nano = Number(m.value);
+    if (!Number.isSafeInteger(nano) || nano < SALE_DUST) continue;
+    const memo = await readComment(m.message_content && m.message_content.body);
+    if (!memo || !/^VTX-[0-9A-F]{16}$/.test(memo)) continue;
 
-      const order = await db.prepare("SELECT * FROM purchases WHERE memo = ?").bind(memo).first();
-      if (!order || tx.now < order.created_at - 60) continue;
-      const vtx = vtxForTon(nano, order.rate);   // pays for what really arrived
-      const hit = await db.prepare(`
-        UPDATE purchases SET status = 'paid', paid_at = ?, ton_tx_hash = ?, ton_nano = ?, vtx_units = ?
-        WHERE id = ? AND status = 'awaiting'
-      `).bind(tx.now, tx.hash, nano, vtx, order.id).run();
-      if (hit.meta.changes) continue;
-      // Same comment paid twice: keep it as its own order. A known tx hash is ignored.
-      await db.prepare(`
-        INSERT OR IGNORE INTO purchases
-          (user_id, wallet_address, memo, rate, ton_nano, vtx_units, status, created_at, paid_at, ton_tx_hash)
-        SELECT ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?
-        WHERE NOT EXISTS (SELECT 1 FROM purchases WHERE ton_tx_hash = ?)
-      `).bind(order.user_id, order.wallet_address, `${memo}#${tx.lt}`, order.rate, nano, vtx,
-        order.created_at, tx.now, tx.hash, tx.hash).run();
+    const order = await db.prepare("SELECT * FROM purchases WHERE memo = ?").bind(memo).first();
+    if (!order || tx.now < order.created_at - 60) continue;
+    // The ordered price holds for a first payment made in time; otherwise the current one applies.
+    let rate = order.rate;
+    if (order.status !== "awaiting" || tx.now > order.created_at + SALE_PRICE_HOLD) {
+      rate = Math.min(rate, rateAfter(await purchaseCount(db, tx.now)));
     }
-    if (txs.length < 100) return;
+    const vtx = vtxForTon(nano, rate);         // pays for what really arrived
+    const hit = await db.prepare(`
+      UPDATE purchases SET status = 'paid', paid_at = ?, ton_tx_hash = ?, ton_nano = ?, vtx_units = ?, rate = ?
+      WHERE id = ? AND status = 'awaiting'
+    `).bind(tx.now, tx.hash, nano, vtx, rate, order.id).run();
+    if (hit.meta.changes) continue;
+    // Same comment paid twice: keep it as its own order. A known tx hash is ignored.
+    await db.prepare(`
+      INSERT OR IGNORE INTO purchases
+        (user_id, wallet_address, memo, rate, ton_nano, vtx_units, status, created_at, paid_at, ton_tx_hash)
+      SELECT ?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?
+      WHERE NOT EXISTS (SELECT 1 FROM purchases WHERE ton_tx_hash = ?)
+    `).bind(order.user_id, order.wallet_address, `${memo}#${tx.lt}`, rate, nano, vtx,
+      order.created_at, tx.now, tx.hash, tx.hash).run();
   }
 }
 
@@ -867,9 +891,10 @@ async function purchaseList(env, db, user) {
   const { results } = await db.prepare(`
     SELECT * FROM purchases WHERE user_id = ? AND (status <> 'awaiting' OR created_at > ?) ORDER BY id DESC LIMIT 30
   `).bind(user.id, now() - 3600).all();
+  const n = await purchaseCount(db, now());
   return {
     enabled: !!saleWallet(env),
-    rate: SALE_RATE, min: SALE_MIN / 1e9, max: SALE_MAX / 1e9,
+    rate: rateAfter(n), next_rate: rateAfter(n + 1), min_rate: SALE_RATE_MIN, min: SALE_MIN / 1e9, max: SALE_MAX / 1e9,
     purchases: results.map(purchaseView)
   };
 }
@@ -1219,6 +1244,10 @@ const routes = {
     if (nano < SALE_MIN) throw new HttpError(`Minimum is ${SALE_MIN / 1e9} TON`);
     if (nano > SALE_MAX) throw new HttpError(`Maximum is ${SALE_MAX / 1e9} TON per order`);
     const t = now();
+    const rate = rateAfter(await purchaseCount(db, t));
+    if (body.rate !== undefined && rate < Number(body.rate)) {
+      throw new HttpError(`The price has changed: 1 TON = ${rate} VTX. Please check and try again`, 409);
+    }
     const recent = await db.prepare(
       "SELECT COUNT(*) AS n FROM purchases WHERE user_id = ? AND status = 'awaiting' AND created_at > ?"
     ).bind(user.id, t - 86400).first();
@@ -1228,7 +1257,7 @@ const routes = {
     const r = await db.prepare(`
       INSERT INTO purchases (user_id, wallet_address, memo, rate, ton_nano, vtx_units, status, created_at)
       VALUES (?, ?, ?, ?, ?, ?, 'awaiting', ?)
-    `).bind(user.id, user.wallet_address, memo, SALE_RATE, nano, vtxForTon(nano, SALE_RATE), t).run();
+    `).bind(user.id, user.wallet_address, memo, rate, nano, vtxForTon(nano, rate), t).run();
     const p = await db.prepare("SELECT * FROM purchases WHERE id = ?").bind(r.meta.last_row_id).first();
     return {
       purchase: purchaseView(p),

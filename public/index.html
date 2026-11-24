@@ -599,6 +599,7 @@ body.has-nav[data-tab="mine"] .cover-wrap{display:block}
     <div class="amt-box"><input id="bAmount" inputmode="decimal" autocomplete="off" placeholder="1" aria-label="TON amount"><b>TON</b></div>
     <div class="chips" id="bChips"><button data-ton="1">1</button><button data-ton="5">5</button><button data-ton="10">10</button><button data-ton="25">25</button><button data-ton="50">50</button></div>
     <div class="receive"><span>You receive</span><b id="bGet">0 VTX</b></div>
+    <p class="hint" id="bNext"></p>
     <button class="cta" id="bSubmit">Buy VTX</button>
     <p class="hint">VTX are sent by hand to your connected wallet within 1–24 hours. VTX is an unverified token and is not traded on any exchange: you may not be able to sell it. Most of the supply is held by one wallet. Not an investment, no profit is promised. Network fee is extra.</p>
     <ul class="list" id="bList"></ul>
@@ -1512,6 +1513,9 @@ function renderBuy(){
  $("buyCard").classList.toggle("hidden", !sale.enabled && !sale.purchases.length);
  for (const id of ["bSubmit", "bChips"]) $(id).classList.toggle("hidden", !sale.enabled);
  $("bRate").textContent = `1 TON = ${sale.rate} VTX`;
+ $("bNext").textContent = sale.next_rate < sale.rate
+  ? `Each purchase of 1+ TON by anyone lowers the amount by 1% (next: ${sale.next_rate}, not below ${sale.min_rate} VTX per TON). Your price is held for 15 minutes after ordering; a later payment gets the price at that time.`
+  : `This is the lowest amount: ${sale.min_rate} VTX per TON.`;
  const list = $("bList");
  list.innerHTML = "";
  for (const p of sale.purchases) {
@@ -1544,7 +1548,7 @@ $("bSubmit").addEventListener("click", async () => {
  try {
   if (!tonUI || !tonUI.account) throw new Error("Wallet is disconnected — sign in again");
   if (tonUI.account.address !== me.wallet) throw new Error("Connected wallet differs from your account");
-  const r = await api("/api/buy", { method: "POST", body: { ton: $("bAmount").value.trim().replace(",", ".").replace(/\.$/, "") } });
+  const r = await api("/api/buy", { method: "POST", body: { rate: sale.rate, ton: $("bAmount").value.trim().replace(",", ".").replace(/\.$/, "") } });
   await tonUI.sendTransaction(r.transaction);
   $("bAmount").value = "";
   toast("Payment sent — waiting for the blockchain");
