@@ -758,8 +758,52 @@ async function readComment(boc) {
   } catch { return null; }
 }
 
-// Finds TON payments for open orders. Safe to call any number of times, concurrently.
+// Finds TON payments and tells the admins about new ones.
 async function syncPurchases(env, db) {
+  await findPayments(env, db);
+  await notifyPaidPurchases(env, db);
+}
+
+// Telegram message to every admin with a linked account, once per paid order.
+async function notifyPaidPurchases(env, db) {
+  if (!env.BOT_TOKEN) return;
+  const { results } = await db.prepare(
+    "SELECT * FROM purchases WHERE status = 'paid' AND notified_at IS NULL ORDER BY id LIMIT 10"
+  ).all();
+  if (!results.length) return;
+  const wallets = String(env.ADMIN_WALLETS || "").split(",").map(x => x.trim().toLowerCase()).filter(Boolean);
+  const admins = [];
+  for (const w of wallets) {
+    const u = await db.prepare("SELECT telegram_id FROM users WHERE LOWER(wallet_address) = ?").bind(w).first();
+    if (u && u.telegram_id) admins.push(u.telegram_id);
+  }
+  if (!admins.length) { console.warn("no admin has a linked Telegram account"); return; }
+
+  for (const p of results) {
+    // Mark first so overlapping runs never send twice; undo if nobody got it.
+    const mark = await db.prepare(
+      "UPDATE purchases SET notified_at = ? WHERE id = ? AND notified_at IS NULL"
+    ).bind(now(), p.id).run();
+    if (!mark.meta.changes) continue;
+    let sent = false;
+    for (const chat of admins) {
+      try {
+        const r = await tgCall(env.BOT_TOKEN, "sendMessage", {
+          chat_id: chat, parse_mode: "HTML",
+          text: `💰 <b>New VTX order #${p.id}</b>\n\nReceived: <b>${Number(formatTon(p.ton_nano))} TON</b>\n` +
+            `Send: <b>${Number(formatBalance(p.vtx_units)).toLocaleString("en-US")} VTX</b>\n` +
+            `To: <code>${friendlyAddress(p.wallet_address)}</code>\n\nOpen the app → Wallet → Admin.`,
+          reply_markup: { inline_keyboard: [[{ text: "Open VOLTIX", web_app: { url: APP_URL } }]] }
+        });
+        if (r.ok) sent = true; else console.warn("admin notify:", r.error_code, r.description);
+      } catch (e) { console.warn("admin notify failed", e.message); }
+    }
+    if (!sent) await db.prepare("UPDATE purchases SET notified_at = NULL WHERE id = ?").bind(p.id).run();
+  }
+}
+
+// Matches TON payments to open orders. Safe to call any number of times, concurrently.
+async function findPayments(env, db) {
   const wallet = saleWallet(env);
   if (!wallet) return;
   const oldest = await db.prepare(
@@ -1180,6 +1224,17 @@ const routes = {
         messages: [{ address: friendlyAddress(wallet), amount: String(nano), payload: commentBoc(memo) }]
       }
     };
+  },
+
+  // Called by the notifier worker every few minutes, so payments are noticed
+  // even when nobody has the app open.
+  "POST /api/internal/purchases/sync": async ({ request, env, db }) => {
+    if (!env.BOT_TOKEN) throw new HttpError("Not configured", 503);
+    if ((request.headers.get("X-Voltix-Secret") || "") !== await webhookSecret(env.BOT_TOKEN)) {
+      throw new HttpError("Forbidden", 403);
+    }
+    await syncPurchases(env, db);
+    return {};
   },
 
   // Admin: paid orders waiting for their VTX.

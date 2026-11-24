@@ -53,7 +53,8 @@ Create a bot with @BotFather → `/newapp`, point it to your Pages URL, then set
 Bot: `@VoltixMiningBot`, Mini App: `https://t.me/VoltixMiningBot/VTX`.
 
 - The app links the Telegram account (validated `initData`) via `POST /api/telegram/link`.
-- `notifier/` is a separate Worker on a 10-minute cron: it keeps the bot webhook
+- `notifier/` is a separate Worker on a 2-minute cron: it checks for new VTX payments
+  (admins get a Telegram message) and every 10 minutes keeps the bot webhook
   (`/api/telegram/webhook`, answers `/start`) and menu button set, and reminds users who
   haven't collected their mining for a day (at most once a day).
 

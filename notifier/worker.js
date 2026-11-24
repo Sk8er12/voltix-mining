@@ -1,4 +1,6 @@
-// VOLTIX notifier — scheduled Cloudflare Worker (every 10 minutes).
+// VOLTIX notifier — scheduled Cloudflare Worker (every 2 minutes).
+//  * Every run: asks the app to check for new VTX payments (admin notifications).
+// Every 10 minutes:
 //  * Keeps the Telegram bot webhook and menu button pointing at the app.
 //  * Reminds users who haven't collected their 24/7 mining for a day.
 //
@@ -97,12 +99,24 @@ export async function notifyFinished(env) {
   return { due: results.length, sent };
 }
 
+// Asks the app to look for new VTX payments and notify the admins.
+async function syncPurchases(env) {
+  try {
+    const res = await fetch(`${APP_URL}/api/internal/purchases/sync`, {
+      method: "POST", headers: { "X-Voltix-Secret": await webhookSecret(env.BOT_TOKEN) }
+    });
+    console.log("purchases sync", res.status);
+  } catch (e) { console.warn("purchases sync failed:", e.message); }
+}
+
 export default {
   async scheduled(event, env, ctx) {
     if (!env.BOT_TOKEN) {
       console.warn("BOT_TOKEN secret is not set");
       return;
     }
+    await syncPurchases(env);
+    if (new Date(event.scheduledTime).getUTCMinutes() % 10) return;
     await ensureBotSetup(env);
     const result = await notifyFinished(env);
     console.log("notifier", JSON.stringify(result));

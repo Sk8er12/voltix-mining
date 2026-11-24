@@ -89,7 +89,8 @@ CREATE TABLE IF NOT EXISTS purchases (
   paid_at        INTEGER,
   ton_tx_hash    TEXT    UNIQUE,
   delivered_at   INTEGER,
-  tx_hash        TEXT
+  tx_hash        TEXT,
+  notified_at    INTEGER                        -- admins told about the payment
 );
 CREATE INDEX IF NOT EXISTS idx_purchases_user ON purchases(user_id, id);
 CREATE INDEX IF NOT EXISTS idx_purchases_status ON purchases(status, created_at);
