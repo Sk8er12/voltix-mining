@@ -54,7 +54,7 @@ const DAILY_BONUS = 10;
 const DAILY_MAX_STREAK = 7;
 
 // Withdrawals: requested in the app, paid out manually by an admin (1–24 h).
-const WITHDRAW_MIN = V(10_000);
+const WITHDRAW_MIN = V(2_000);
 const WITHDRAW_FEE_PERCENT = 5;             // burned, the user receives the rest
 const WITHDRAW_COOLDOWN = 48 * 60 * 60;     // one request per 48 h
 // Payouts are made in the VTX jetton, 1 VOLTIX = 1 VTX (both use 6 decimals).

@@ -108,7 +108,7 @@ All responses are JSON `{ success, ... }`. Authenticated routes need `Authorizat
 | GET  | `/api/levels` | – | all 500 levels (5 leagues): VTX to hold, VOLTIX/h, boost |
 | POST | `/api/holding/refresh` | ✓ | re-read the VTX held in the wallet now; the level (1–500, 15 → ~189k VOLTIX/h) depends on it |
 | GET  | `/api/withdrawals` | ✓ | wallet tab: rules, cooldown, history, VTX token info |
-| POST | `/api/withdraw` | ✓ | `{ amount }` request a payout (min 10,000, 5% fee, 1 per 48 h) |
+| POST | `/api/withdraw` | ✓ | `{ amount }` request a payout (min 2,000, 5% fee, 1 per 48 h) |
 | GET/POST | `/api/admin/withdrawals[/process]` | admin | pending payouts; mark paid / reject (refund) |
 | GET/POST | `/api/buy` | ✓ | VTX sale: price and orders / create an order (127 VTX per TON) |
 | GET/POST | `/api/admin/purchases[/process]` | admin | paid orders; mark as sent |
