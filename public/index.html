@@ -630,6 +630,12 @@ body.has-nav[data-tab="mine"] .cover-wrap{display:block}
    </div>
 
    <div class="glass card admin hidden" id="adminCard">
+    <div class="label" style="color:var(--pink)">Admin · users</div>
+    <div class="stats" style="margin:10px 0 18px">
+     <div class="stat"><div class="label">Total</div><div class="v" id="aTotal">–</div></div>
+     <div class="stat"><div class="label">New 24h</div><div class="v" id="aNew">–</div></div>
+     <div class="stat"><div class="label">Active 24h</div><div class="v" id="aActive">–</div></div>
+    </div>
     <div class="label" style="color:var(--pink)">Admin · pending payouts</div>
     <div id="adminList"></div>
     <div class="label" style="color:var(--pink);margin-top:18px">Admin · VTX orders to send</div>
@@ -1307,7 +1313,7 @@ async function loadWallet(){
   wallet = await api("/api/withdrawals");
   walletOffset = wallet.now - Date.now() / 1000;
   renderWallet();
-  if (wallet.is_admin) { loadAdmin(); loadAdminBuys(); }
+  if (wallet.is_admin) { loadAdminStats(); loadAdmin(); loadAdminBuys(); }
  } catch (e) { toast(e.message, true); }
 }
 
@@ -1550,6 +1556,15 @@ $("bSubmit").addEventListener("click", async () => {
   buyTick();
  }
 });
+
+async function loadAdminStats(){
+ try {
+  const s = await api("/api/admin/stats");
+  $("aTotal").textContent = fmt(s.total, 0);
+  $("aNew").textContent = fmt(s.new_24h, 0);
+  $("aActive").textContent = fmt(s.active_24h, 0);
+ } catch (e) { console.warn(e.message); }
+}
 
 async function loadAdminBuys(){
  const box = $("adminBuys");

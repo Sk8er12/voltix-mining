@@ -1148,6 +1148,19 @@ const routes = {
     };
   },
 
+  // Admin: how many people use the app. held_checked_at moves whenever a user opens it.
+  "GET /api/admin/stats": async ({ request, env, db }) => {
+    await requireAdmin(request, env, db);
+    const day = now() - 86400;
+    const s = await db.prepare(`
+      SELECT COUNT(*) AS total,
+        COALESCE(SUM(created_at > ?), 0) AS new_24h,
+        COALESCE(SUM(held_checked_at > ?), 0) AS active_24h
+      FROM users
+    `).bind(day, day).first();
+    return { total: s.total, new_24h: s.new_24h, active_24h: s.active_24h };
+  },
+
   // Admin: requests waiting for payout (oldest first) and the latest processed ones.
   "GET /api/admin/withdrawals": async ({ request, env, db }) => {
     await requireAdmin(request, env, db);

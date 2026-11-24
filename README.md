@@ -112,6 +112,7 @@ All responses are JSON `{ success, ... }`. Authenticated routes need `Authorizat
 | GET/POST | `/api/admin/withdrawals[/process]` | admin | pending payouts; mark paid / reject (refund) |
 | GET/POST | `/api/buy` | ✓ | VTX sale: price and orders / create an order (127 VTX per TON) |
 | GET/POST | `/api/admin/purchases[/process]` | admin | paid orders; mark as sent |
+| GET  | `/api/admin/stats` | admin | user counts: total, new and active in 24 h |
 | POST | `/api/checkin` | ✓ | daily bonus: 10 VOLTIX × streak day (max 70) |
 | GET  | `/api/tasks` | ✓ | one-time tasks with progress |
 | POST | `/api/tasks/claim` | ✓ | `{ task_id }` claim a completed task |
