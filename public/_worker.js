@@ -84,6 +84,19 @@ const SALE_DUST = 100_000_000;              // payments under 0.1 TON are ignore
 const SALE_LOOKBACK = 7 * 24 * 60 * 60;     // late payments are still matched for a week
 const SALE_ORDERS_PER_DAY = 20;
 
+// Meteor Shower: free 5-minute rounds, one at a random time every day plus any an admin starts.
+// A round is a series of waves; a player can collect one meteor per wave.
+const METEOR_LENGTH = 5 * 60;
+const METEOR_WAVE = 6;                      // seconds per meteor (50 per round)
+const METEOR_GRACE = 1;                     // seconds a tap may arrive late
+const METEOR_BUDGET = V(10_000);            // most VOLTIX one round can give out to everyone
+const METEOR_FROM = 8, METEOR_TO = 18;      // the daily round starts between these UTC hours
+const METEOR_REWARDS = [                    // chances in percent, about 62 VOLTIX per full round
+  { amount: 0.5, chance: 55 }, { amount: 1, chance: 28 }, { amount: 2, chance: 12 },
+  { amount: 5, chance: 4 }, { amount: 25, chance: 1 }
+];
+const METEOR_DELAYS = [60, 300, 1800];      // admin: start in ... seconds
+
 // One-time tasks. "Active" friends are invited users who claimed at least one mining reward.
 const TASKS = [
   { id: "first_claim", title: "Claim your first mining reward", reward: 25, goal: 1, stat: "claims" },
@@ -718,6 +731,75 @@ async function notifyTelegram(env, telegramId, text) {
   } catch (e) { console.warn("telegram notify failed", e.message); }
 }
 
+// ---------------------------------------------------------------- Meteor Shower
+
+function randomInt(n) {                     // 0..n-1, unbiased
+  const limit = Math.floor(2 ** 32 / n) * n, b = new Uint32Array(1);
+  do crypto.getRandomValues(b); while (b[0] >= limit);
+  return b[0] % n;
+}
+
+function meteorReward() {
+  let r = randomInt(100);
+  for (const x of METEOR_REWARDS) { if (r < x.chance) return V(x.amount); r -= x.chance; }
+}
+
+// Adds a round unless it would overlap another one.
+async function addMeteor(db, start, day = null) {
+  const end = start + METEOR_LENGTH;
+  const r = await db.prepare(`
+    INSERT OR IGNORE INTO meteor_events (starts_at, ends_at, day, budget_micro)
+    SELECT ?, ?, ?, ?
+    WHERE NOT EXISTS (SELECT 1 FROM meteor_events WHERE cancelled = 0 AND starts_at < ? AND ends_at > ?)
+  `).bind(start, end, day, METEOR_BUDGET, end + 60, start - 60).run();
+  return r.meta.changes > 0;
+}
+
+// Keeps the next daily round planned: today's, or tomorrow's once today's is over.
+async function planMeteor(db, t = now()) {
+  for (const day of [dayNumber(t), dayNumber(t) + 1]) {
+    const e = await db.prepare("SELECT ends_at, cancelled FROM meteor_events WHERE day = ?").bind(day).first();
+    if (e) { if (e.ends_at > t && !e.cancelled) return; continue; }
+    const from = Math.max(day * 86400 + METEOR_FROM * 3600, t + 600);
+    const to = day * 86400 + METEOR_TO * 3600;
+    if (from < to && await addMeteor(db, from + randomInt(to - from), day)) return;
+  }
+}
+
+async function meteorResults(db, e, user) {
+  const { results } = await db.prepare(`
+    SELECT h.user_id, u.wallet_address, SUM(h.amount_micro) AS total, COUNT(*) AS hits, MAX(h.created_at) AS last
+    FROM meteor_hits h JOIN users u ON u.id = h.user_id
+    WHERE h.event_id = ? GROUP BY h.user_id ORDER BY total DESC, hits DESC, last, h.user_id
+  `).bind(e.id).all();
+  const row = (r, i) => ({
+    rank: i + 1, wallet: friendlyAddress(r.wallet_address), total: formatBalance(r.total), hits: r.hits, me: r.user_id === user.id
+  });
+  const mine = results.findIndex(r => r.user_id === user.id);
+  return {
+    id: e.id, ended_at: e.ends_at, players: results.length, top: results.slice(0, 10).map(row),
+    me: mine < 0 ? null : row(results[mine], mine)
+  };
+}
+
+async function meteorView(env, db, user) {
+  const t = now();
+  await planMeteor(db, t);
+  const [event, last] = await Promise.all([
+    db.prepare("SELECT * FROM meteor_events WHERE cancelled = 0 AND ends_at > ? ORDER BY starts_at LIMIT 1").bind(t).first(),
+    db.prepare("SELECT * FROM meteor_events WHERE cancelled = 0 AND ends_at <= ? ORDER BY ends_at DESC LIMIT 1").bind(t).first()
+  ]);
+  const mine = event && await db.prepare(
+    "SELECT COALESCE(SUM(amount_micro), 0) AS total, COUNT(*) AS hits, MAX(wave) AS wave FROM meteor_hits WHERE event_id = ? AND user_id = ?"
+  ).bind(event.id, user.id).first();
+  return {
+    now_ms: Date.now(), wave_seconds: METEOR_WAVE, rewards: METEOR_REWARDS, is_admin: isAdmin(env, user),
+    event: event && { id: event.id, starts_at: event.starts_at, ends_at: event.ends_at },
+    mine: mine && { total: formatBalance(mine.total), hits: mine.hits, last_wave: mine.wave ?? -1 },
+    last: last && await meteorResults(db, last, user)
+  };
+}
+
 // ---------------------------------------------------------------- VTX sale
 
 const formatTon = nano => (Number(nano) / 1e9).toFixed(4);
@@ -1225,6 +1307,72 @@ const routes = {
     return { message: status === "paid" ? "Marked as paid" : "Rejected and refunded", withdrawal: withdrawalView(w) };
   },
 
+  // Meteor Shower: next or running round, my score, last winners.
+  "GET /api/games/meteor": async ({ request, env, db }) => {
+    const { user } = await authUser(request, db);
+    return meteorView(env, db, user);
+  },
+
+  // { event_id, wave } -> random reward. One per wave, enforced by the primary key.
+  "POST /api/games/meteor/collect": async ({ request, db }) => {
+    const { user } = await authUser(request, db);
+    const body = await readJson(request);
+    const id = Number(body.event_id), wave = Number(body.wave);
+    if (!Number.isSafeInteger(id) || !Number.isSafeInteger(wave)) throw new HttpError("Invalid request");
+    const ms = Date.now() / 1000, t = Math.floor(ms);
+    const e = await db.prepare("SELECT * FROM meteor_events WHERE id = ? AND cancelled = 0").bind(id).first();
+    if (!e || ms < e.starts_at || ms >= e.ends_at + METEOR_GRACE) throw new HttpError("The shower is not active", 409);
+    const from = e.starts_at + wave * METEOR_WAVE;
+    if (wave < 0 || from >= e.ends_at || ms < from || ms >= from + METEOR_WAVE + METEOR_GRACE) {
+      throw new HttpError("This meteor is gone", 409);
+    }
+    const amount = meteorReward(), type = "meteor:" + id;
+    try {
+      // All or nothing: a repeated wave or an empty pool fails the whole batch.
+      await db.batch([
+        db.prepare("INSERT INTO meteor_hits (event_id, user_id, wave, amount_micro, created_at) VALUES (?, ?, ?, ?, ?)").bind(id, user.id, wave, amount, t),
+        db.prepare("UPDATE meteor_events SET paid_micro = paid_micro + ? WHERE id = ?").bind(amount, id),
+        db.prepare("UPDATE users SET balance_micro = balance_micro + ? WHERE id = ?").bind(amount, user.id),
+        // one history line per round
+        db.prepare(`
+          INSERT INTO transactions (user_id, amount_micro, type, created_at)
+          SELECT ?, 0, ?, ? WHERE NOT EXISTS (SELECT 1 FROM transactions WHERE user_id = ? AND type = ?)
+        `).bind(user.id, type, t, user.id, type),
+        db.prepare("UPDATE transactions SET amount_micro = amount_micro + ? WHERE user_id = ? AND type = ?").bind(amount, user.id, type)
+      ]);
+    } catch (err) {
+      if (/CHECK/i.test(err.message)) throw new HttpError("All rewards of this shower are collected", 409);
+      if (/UNIQUE|PRIMARY/i.test(err.message)) throw new HttpError("Already collected", 409);
+      throw err;
+    }
+    const mine = await db.prepare(
+      "SELECT SUM(amount_micro) AS total, COUNT(*) AS hits FROM meteor_hits WHERE event_id = ? AND user_id = ?"
+    ).bind(id, user.id).first();
+    return { reward: formatBalance(amount), total: formatBalance(mine.total), hits: mine.hits };
+  },
+
+  // Admin: { delay } start a round in 1, 5 or 30 minutes.
+  "POST /api/admin/meteor/start": async ({ request, env, db }) => {
+    const { user } = await requireAdmin(request, env, db);
+    const delay = Number((await readJson(request)).delay);
+    if (!METEOR_DELAYS.includes(delay)) throw new HttpError("Invalid delay");
+    if (!await addMeteor(db, now() + delay)) throw new HttpError("Another shower is running or starts at that time", 409);
+    return meteorView(env, db, user);
+  },
+
+  // Admin: { event_id } stop the running round (winners stay) or cancel a planned one.
+  "POST /api/admin/meteor/stop": async ({ request, env, db }) => {
+    const { user } = await requireAdmin(request, env, db);
+    const id = Number((await readJson(request)).event_id), t = now();
+    const r = await db.prepare(`
+      UPDATE meteor_events SET cancelled = CASE WHEN starts_at > ? THEN 1 ELSE 0 END,
+        ends_at = CASE WHEN starts_at > ? THEN ends_at ELSE ? END
+      WHERE id = ? AND cancelled = 0 AND ends_at > ?
+    `).bind(t, t, t, id, t).run();
+    if (!r.meta.changes) throw new HttpError("Already finished", 409);
+    return meteorView(env, db, user);
+  },
+
   // VTX sale: price, limits and the user's orders.
   "GET /api/buy": async ({ request, env, db }) => {
     const { user } = await authUser(request, db);
@@ -1276,6 +1424,7 @@ const routes = {
       throw new HttpError("Forbidden", 403);
     }
     await syncPurchases(env, db);
+    await planMeteor(db);
     return {};
   },
 

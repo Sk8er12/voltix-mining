@@ -78,6 +78,20 @@ body.has-nav[data-tab="mine"] .cover-wrap{display:block}
  background:linear-gradient(180deg,#fff 30%,#ffe78a 75%,var(--volt2));
  -webkit-background-clip:text;background-clip:text;color:transparent
 }
+/* ---------- games ---------- */
+.mt-stage{position:relative;height:330px;margin:14px -18px 14px;overflow:hidden;background:radial-gradient(circle at 70% 10%,rgba(124,92,255,.35),transparent 55%),radial-gradient(circle at 10% 100%,rgba(255,90,10,.25),transparent 55%),#04050c}
+.mt-stage canvas{position:absolute;inset:0;width:100%;height:100%}
+.mt-mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 16px;pointer-events:none}
+.mt-mid .big{font:900 44px/1.1 var(--display);text-shadow:0 0 30px rgba(255,159,10,.8);margin-top:8px;font-variant-numeric:tabular-nums}
+.mt-mid .sub{color:var(--muted);font-size:12.5px;margin-top:8px}
+.mt-hud{position:absolute;left:14px;right:14px;top:12px;display:flex;justify-content:space-between;font:700 13px var(--mono);pointer-events:none}
+.mt-hud b{color:var(--gold)}
+.mt-odds{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:14px}
+.mt-odds div{background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:9px 2px;text-align:center;font:700 13px var(--mono);color:var(--gold)}
+.mt-odds small{display:block;color:var(--muted);font:500 10px var(--mono);margin-top:3px}
+.mt-me{color:var(--gold)}
+.mt-acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.mt-acts .pill{flex:1}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes breathe{0%,100%{opacity:1}50%{opacity:.6}}
 @keyframes blink{50%{opacity:.25}}
@@ -552,6 +566,33 @@ body.has-nav[data-tab="mine"] .cover-wrap{display:block}
    </div>
   </div>
 
+  <!-- Games -->
+  <div class="pane hidden" data-pane="games">
+   <div class="glass card">
+    <div class="sec-title grad-text">VOLTIX: METEOR SHOWER</div>
+    <p class="sec-sub">5 minutes. A meteor every 6 seconds. Tap COLLECT before it lands.</p>
+    <div class="mt-stage">
+     <canvas id="mtCanvas"></canvas>
+     <div class="mt-hud hidden" id="mtHud"><span>⏱ <b id="mtLeft">5:00</b></span><span>☄️ <b id="mtHits">0</b></span><span><b id="mtTotal">0</b> VOLTIX</span></div>
+     <div class="mt-mid" id="mtMid"><div class="label" id="mtLabel">Loading</div><div class="big" id="mtBig"></div><div class="sub" id="mtSub"></div></div>
+    </div>
+    <button class="cta" id="mtBtn" disabled>Collect</button>
+    <div class="mt-odds" id="mtOdds"></div>
+    <p class="hint">Free to play. One meteor per wave, rewards are random and go straight to your balance. Each round gives out at most 10,000 VOLTIX in total. One account per person, no bots.</p>
+   </div>
+   <div class="glass card hidden" id="mtWin">
+    <div class="label">🏆 Last round winners</div>
+    <p class="hint" id="mtWinSub"></p>
+    <ul class="list" id="mtList"></ul>
+   </div>
+   <div class="glass card admin hidden" id="mtAdmin">
+    <div class="label" style="color:var(--pink)">Admin · Meteor Shower</div>
+    <p class="hint" id="mtAdmInfo"></p>
+    <div class="mt-acts"><button class="pill" data-delay="60">In 1 min</button><button class="pill" data-delay="300">In 5 min</button><button class="pill" data-delay="1800">In 30 min</button></div>
+    <div class="mt-acts"><button class="pill done" id="mtStop">Stop</button></div>
+   </div>
+  </div>
+
   <!-- Friends -->
   <div class="pane hidden" data-pane="friends">
    <div class="glass card invite-hero">
@@ -665,6 +706,9 @@ body.has-nav[data-tab="mine"] .cover-wrap{display:block}
  </button>
  <button data-tab="tasks">
   <svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>Missions<span class="dot hidden" id="taskDot"></span>
+ </button>
+ <button data-tab="games">
+  <svg viewBox="0 0 24 24"><circle cx="8" cy="16" r="5"/><path d="M12 12l9-9M13.5 16l5-5M8 10.5l5-5"/></svg>Games<span class="dot hidden" id="gameDot"></span>
  </button>
  <button data-tab="friends">
   <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6"/><path d="M16 4a4 4 0 0 1 0 8M22 21c0-3-2-5-4-5.5"/></svg>Friends
@@ -911,6 +955,8 @@ function openTab(tab){
  if (tab === "friends") loadReferrals();
  if (tab === "tasks") loadTasks();
  if (tab === "wallet") loadBuy();
+ if (tab === "games") loadMeteor();
+ if (tab === "mine" && mt && mt.mine && mt.mine.hits) refreshMe();
  if (tab === "wallet") loadWallet();
  haptic("light");
  window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
@@ -1271,7 +1317,7 @@ async function loadHistory(){
   for (const tx of transactions) {
    const li = document.createElement("li");
    li.innerHTML = `<div><div class="n"></div><div class="t"></div></div><div class="amt"></div>`;
-   li.querySelector(".n").textContent = names[tx.type] || tx.type;
+   li.querySelector(".n").textContent = names[tx.type] || (tx.type.startsWith("meteor:") ? "☄️ Meteor Shower" : tx.type);
    li.querySelector(".t").textContent = date(tx.created_at);
    const neg = Number(tx.amount) < 0;
    li.querySelector(".amt").textContent = (neg ? "" : "+") + fmt(tx.amount, 2);
@@ -1488,6 +1534,162 @@ async function loadAdmin(){
   }
  } catch (e) { $("adminCard").classList.add("hidden"); }
 }
+
+// ---------------------------------------------------------------- Meteor Shower
+let mt = null, mtOff = 0, mtSent = -1, mtBusy = false, mtLoading = false, mtHitAt = 0, mtHitText = "", mtCheckAt = 0;
+const mtNow = () => Date.now() / 1000 + mtOff;
+
+async function loadMeteor(){
+ if (mtLoading || !token) return;
+ mtLoading = true; mtCheckAt = Date.now() + 20000;
+ try { const t0 = Date.now(), d = await api("/api/games/meteor"); setMeteor(d, t0); }
+ catch (e) { console.warn(e.message); }
+ finally { mtLoading = false; }
+}
+function setMeteor(d, t0){
+ mtOff = (d.now_ms - (t0 + Date.now()) / 2) / 1000;
+ if (!mt || !mt.event || !d.event || mt.event.id !== d.event.id) mtSent = -1;
+ mt = d;
+ if (d.mine) mtSent = Math.max(mtSent, d.mine.last_wave);
+ $("mtOdds").innerHTML = d.rewards.map(r => `<div>${r.amount}<small>${r.chance}%</small></div>`).join("");
+ $("mtTotal").textContent = fmt(d.mine ? d.mine.total : 0, 1);
+ $("mtHits").textContent = d.mine ? d.mine.hits : 0;
+ $("mtWin").classList.toggle("hidden", !d.last);
+ if (d.last) {
+  $("mtWinSub").textContent = `${date(d.last.ended_at)} · players: ${d.last.players}`;
+  const list = $("mtList"), rows = d.last.top.slice();
+  if (d.last.me && d.last.me.rank > 10) rows.push(d.last.me);
+  list.innerHTML = rows.length ? "" : '<li class="empty">Nobody played this round</li>';
+  for (const r of rows) {
+   const li = document.createElement("li");
+   li.innerHTML = '<div><div class="n"></div><div class="t"></div></div><div class="amt"></div>';
+   const n = li.querySelector(".n");
+   n.textContent = `${["🥇", "🥈", "🥉"][r.rank - 1] || "#" + r.rank} ${short(r.wallet)}${r.me ? " (you)" : ""}`;
+   n.classList.toggle("mt-me", r.me);
+   li.querySelector(".t").textContent = `${r.hits} meteors`;
+   li.querySelector(".amt").textContent = `+${fmt(r.total, 1)}`;
+   list.appendChild(li);
+  }
+ }
+ $("mtAdmin").classList.toggle("hidden", !d.is_admin);
+ $("mtAdmInfo").textContent = d.event ? (mtNow() >= d.event.starts_at ? "Running now." : `Next round: ${date(d.event.starts_at)}`) : "No round planned.";
+ $("mtStop").classList.toggle("hidden", !d.event);
+ $("mtStop").textContent = d.event && mtNow() >= d.event.starts_at ? "Stop now" : "Cancel next round";
+ meteorTick();
+}
+function mtState(){
+ if (!mt || !mt.event) return { on: false };
+ const t = mtNow(), e = mt.event, on = t >= e.starts_at && t < e.ends_at;
+ const w = Math.floor((t - e.starts_at) / mt.wave_seconds);
+ return { on, t, e, wave: w, k: on ? (t - e.starts_at) / mt.wave_seconds - w : 0 };
+}
+function meteorTick(){
+ if (!me || !token) return;
+ const s = mtState();
+ $("gameDot").classList.toggle("hidden", !s.on);
+ const over = mt && mt.event && mtNow() >= mt.event.ends_at + 1.2;
+ if (document.visibilityState === "visible" && !mtBusy && (over ? Date.now() > mtCheckAt - 18000 : Date.now() > mtCheckAt)) loadMeteor();
+ if (activeTab !== "games" || !mt) return;
+ $("mtHud").classList.toggle("hidden", !s.on);
+ $("mtMid").classList.toggle("hidden", s.on);
+ const btn = $("mtBtn");
+ if (s.on) {
+  const left = Math.ceil(s.e.ends_at - s.t);
+  $("mtLeft").textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+  const done = mtSent >= s.wave;
+  btn.disabled = done || mtBusy;
+  btn.textContent = done ? `Next meteor in ${Math.ceil((1 - s.k) * mt.wave_seconds)}` : "☄️ Collect";
+  btn.classList.toggle("ready", !done);
+ } else {
+  btn.disabled = true; btn.classList.remove("ready"); btn.textContent = "Collect";
+  const left = s.e ? s.e.starts_at - s.t : 0;
+  if (s.e && left > 0) {
+   $("mtLabel").textContent = left <= 60 ? "Meteors are coming" : "Next shower in";
+   $("mtBig").textContent = left <= 10 ? Math.ceil(left) : hms(left);
+   $("mtSub").textContent = date(s.e.starts_at);
+  } else {
+   $("mtLabel").textContent = s.e ? "Shower is over" : "Meteor Shower";
+   $("mtBig").textContent = s.e ? "🏆" : "Soon";
+   $("mtSub").textContent = s.e ? "Counting the winners…" : "";
+  }
+ }
+}
+setInterval(meteorTick, 200);
+
+$("mtBtn").addEventListener("click", async () => {
+ const s = mtState();
+ if (!s.on || mtBusy || mtSent >= s.wave) return;
+ mtBusy = true; mtSent = s.wave; haptic("medium"); meteorTick();
+ try {
+  const r = await api("/api/games/meteor/collect", { method: "POST", body: { event_id: s.e.id, wave: s.wave } });
+  if (mt.mine) Object.assign(mt.mine, { total: r.total, hits: r.hits });
+  $("mtTotal").textContent = fmt(r.total, 1); $("mtHits").textContent = r.hits;
+  me.balance = (Number(me.balance) + Number(r.reward)).toFixed(6); setBalance(me.balance);
+  mtHitAt = performance.now(); mtHitText = "+" + Number(r.reward);
+  floatText($("mtBtn"), `+${Number(r.reward)} VOLTIX`);
+  if (Number(r.reward) >= 5) burst($("mtBtn"));
+  haptic(Number(r.reward) >= 5 ? "success" : "light");
+ } catch (e) { toast(e.message, true); }
+ finally { mtBusy = false; meteorTick(); }
+});
+document.querySelectorAll("#mtAdmin [data-delay]").forEach(b => b.addEventListener("click", () => withButton(b, async () => {
+ const t0 = Date.now();
+ setMeteor(await api("/api/admin/meteor/start", { method: "POST", body: { delay: Number(b.dataset.delay) } }), t0);
+ toast("Meteor Shower is scheduled");
+})));
+$("mtStop").addEventListener("click", async () => {
+ if (!mt || !mt.event) return;
+ const id = mt.event.id, t0 = Date.now();
+ if (!(await askConfirm(mtNow() >= mt.event.starts_at ? "Stop this round now?" : "Cancel the next round?"))) return;
+ try { setMeteor(await api("/api/admin/meteor/stop", { method: "POST", body: { event_id: id } }), t0); toast("Done"); }
+ catch (e) { toast(e.message, true); loadMeteor(); }
+});
+
+// The falling meteor. Position comes from the server clock, so everyone sees the same wave.
+(() => {
+ const c = $("mtCanvas"), x = c.getContext("2d");
+ const stars = Array.from({ length: 60 }, () => [Math.random(), Math.random(), Math.random()]);
+ function rock(px, py, r, dx, dy){
+  const g = x.createLinearGradient(px, py, px - dx * r * 7, py - dy * r * 7);
+  g.addColorStop(0, "rgba(255,240,150,.95)"); g.addColorStop(.25, "rgba(255,140,20,.6)"); g.addColorStop(1, "rgba(255,40,80,0)");
+  x.fillStyle = g; x.beginPath();
+  x.moveTo(px - dy * r, py + dx * r); x.lineTo(px - dx * r * 7, py - dy * r * 7); x.lineTo(px + dy * r, py - dx * r);
+  x.fill();
+  const b = x.createRadialGradient(px, py, 0, px, py, r * 1.9);
+  b.addColorStop(0, "rgba(255,220,110,.8)"); b.addColorStop(1, "rgba(255,120,0,0)");
+  x.fillStyle = b; x.beginPath(); x.arc(px, py, r * 1.9, 0, 7); x.fill();
+  x.fillStyle = "#5b3a2c"; x.beginPath(); x.arc(px, py, r, 0, 7); x.fill();
+  x.fillStyle = "#3a231b";
+  for (const [a, d, s] of [[.6, .45, .24], [2.4, .5, .2], [4.2, .4, .28]]) { x.beginPath(); x.arc(px + Math.cos(a) * r * d, py + Math.sin(a) * r * d, r * s, 0, 7); x.fill(); }
+  x.fillStyle = "#FFD60A"; x.font = `900 ${r}px sans-serif`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("⚡", px, py);
+ }
+ function frame(now){
+  requestAnimationFrame(frame);
+  if (activeTab !== "games" || !me || !c.clientWidth || document.visibilityState !== "visible") return;
+  const q = Math.min(devicePixelRatio || 1, 2), w = c.clientWidth * q, h = c.clientHeight * q;
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  x.clearRect(0, 0, w, h);
+  for (const [sx, sy, sr] of stars) { x.globalAlpha = reduceMotion ? .5 : .3 + .5 * Math.abs(Math.sin(now / 900 + sr * 9)); x.fillStyle = "#fff"; x.beginPath(); x.arc(sx * w, sy * h, (sr + .4) * q, 0, 7); x.fill(); }
+  x.globalAlpha = 1;
+  const s = mtState();
+  if (s.on) {
+   const rnd = Math.abs(Math.sin((s.e.id * 31 + s.wave) * 12.9898)) % 1, right = s.wave % 2;
+   const x0 = right ? w * (.75 + rnd * .3) : w * (.25 - rnd * .3), x1 = right ? w * (.15 + rnd * .3) : w * (.85 - rnd * .3);
+   const len = Math.hypot(x1 - x0, h * 1.1), dx = (x1 - x0) / len, dy = h * 1.1 / len;
+   const done = mtSent >= s.wave && !mtBusy;
+   if (!done) rock(x0 + (x1 - x0) * s.k, -h * .05 + h * 1.05 * s.k, 22 * q, dx, dy);
+   const a = (now - mtHitAt) / 1000;
+   if (mtHitAt && a < 1.3) {
+    const cx = w / 2, cy = h / 2;
+    x.globalAlpha = 1 - a / 1.3;
+    if (!reduceMotion) for (let i = 0; i < 26; i++) { const an = i * 2.4, d = (30 + i * 5) * q * Math.sqrt(a); x.fillStyle = i % 3 ? "#FFD60A" : "#FF6A1A"; x.beginPath(); x.arc(cx + Math.cos(an) * d, cy + Math.sin(an) * d, (4 - i % 3) * q, 0, 7); x.fill(); }
+    x.fillStyle = "#FFF27A"; x.font = `900 ${46 * q}px Unbounded,sans-serif`; x.textAlign = "center"; x.textBaseline = "middle"; x.shadowColor = "#FF9F0A"; x.shadowBlur = 24 * q;
+    x.fillText(mtHitText, cx, cy - a * 30 * q); x.shadowBlur = 0; x.globalAlpha = 1;
+   }
+  }
+ }
+ requestAnimationFrame(frame);
+})();
 
 // ---------------------------------------------------------------- buy VTX for TON
 let sale = null;
