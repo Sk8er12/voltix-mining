@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS meteor_events (
 );
 CREATE INDEX IF NOT EXISTS idx_meteor_events_end ON meteor_events(ends_at);
 
--- One collected meteor: one per player per wave
+-- One collected meteor (wave = its number in the round), once per player
 CREATE TABLE IF NOT EXISTS meteor_hits (
   event_id     INTEGER NOT NULL REFERENCES meteor_events(id),
   user_id      INTEGER NOT NULL REFERENCES users(id),

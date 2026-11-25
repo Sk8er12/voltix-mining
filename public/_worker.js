@@ -84,16 +84,20 @@ const SALE_DUST = 100_000_000;              // payments under 0.1 TON are ignore
 const SALE_LOOKBACK = 7 * 24 * 60 * 60;     // late payments are still matched for a week
 const SALE_ORDERS_PER_DAY = 20;
 
-// Meteor Shower: free 5-minute rounds, one at a random time every day plus any an admin starts.
-// A round is a series of waves; a player can collect one meteor per wave.
-const METEOR_LENGTH = 5 * 60;
-const METEOR_WAVE = 6;                      // seconds per meteor (50 per round)
-const METEOR_GRACE = 1;                     // seconds a tap may arrive late
+// Meteor Shower: free 30-second rounds, one at a random time every day plus any an admin starts.
+// Meteor number i appears at start + i * METEOR_EVERY and falls for METEOR_FALL seconds;
+// a player can collect each meteor once, only while it is falling.
+const METEOR_LENGTH = 30;
+const METEOR_COUNT = 112;
+const METEOR_EVERY = 0.25;
+const METEOR_FALL = 2.2;
+const METEOR_GRACE = 1.5;                   // seconds a tap may arrive late (taps are sent in batches)
+const METEOR_BATCH = 20;
 const METEOR_BUDGET = V(10_000);            // most VOLTIX one round can give out to everyone
 const METEOR_FROM = 8, METEOR_TO = 18;      // the daily round starts between these UTC hours
-const METEOR_REWARDS = [                    // chances in percent, about 62 VOLTIX per full round
-  { amount: 0.5, chance: 55 }, { amount: 1, chance: 28 }, { amount: 2, chance: 12 },
-  { amount: 5, chance: 4 }, { amount: 25, chance: 1 }
+const METEOR_REWARDS = [                    // chances in percent, about 66 VOLTIX if nothing is missed
+  { amount: 0.2, chance: 55 }, { amount: 0.5, chance: 28 }, { amount: 1, chance: 12 },
+  { amount: 3, chance: 4 }, { amount: 10, chance: 1 }
 ];
 const METEOR_DELAYS = [60, 300, 1800];      // admin: start in ... seconds
 
@@ -789,13 +793,16 @@ async function meteorView(env, db, user) {
     db.prepare("SELECT * FROM meteor_events WHERE cancelled = 0 AND ends_at > ? ORDER BY starts_at LIMIT 1").bind(t).first(),
     db.prepare("SELECT * FROM meteor_events WHERE cancelled = 0 AND ends_at <= ? ORDER BY ends_at DESC LIMIT 1").bind(t).first()
   ]);
-  const mine = event && await db.prepare(
-    "SELECT COALESCE(SUM(amount_micro), 0) AS total, COUNT(*) AS hits, MAX(wave) AS wave FROM meteor_hits WHERE event_id = ? AND user_id = ?"
-  ).bind(event.id, user.id).first();
+  const hits = event && (await db.prepare(
+    "SELECT wave, amount_micro FROM meteor_hits WHERE event_id = ? AND user_id = ?"
+  ).bind(event.id, user.id).all()).results;
   return {
-    now_ms: Date.now(), wave_seconds: METEOR_WAVE, rewards: METEOR_REWARDS, is_admin: isAdmin(env, user),
+    now_ms: Date.now(), rewards: METEOR_REWARDS, is_admin: isAdmin(env, user),
+    meteors: { count: METEOR_COUNT, every: METEOR_EVERY, fall: METEOR_FALL, batch: METEOR_BATCH },
     event: event && { id: event.id, starts_at: event.starts_at, ends_at: event.ends_at },
-    mine: mine && { total: formatBalance(mine.total), hits: mine.hits, last_wave: mine.wave ?? -1 },
+    mine: hits && {
+      total: formatBalance(hits.reduce((s, h) => s + h.amount_micro, 0)), hits: hits.length, taken: hits.map(h => h.wave)
+    },
     last: last && await meteorResults(db, last, user)
   };
 }
@@ -1313,42 +1320,57 @@ const routes = {
     return meteorView(env, db, user);
   },
 
-  // { event_id, wave } -> random reward. One per wave, enforced by the primary key.
+  // { event_id, meteors: [i, ...] } -> random rewards. Each meteor once, enforced by the primary key.
   "POST /api/games/meteor/collect": async ({ request, db }) => {
     const { user } = await authUser(request, db);
     const body = await readJson(request);
-    const id = Number(body.event_id), wave = Number(body.wave);
-    if (!Number.isSafeInteger(id) || !Number.isSafeInteger(wave)) throw new HttpError("Invalid request");
+    const id = Number(body.event_id);
+    if (!Number.isSafeInteger(id) || !Array.isArray(body.meteors) || !body.meteors.length || body.meteors.length > METEOR_BATCH) {
+      throw new HttpError("Invalid request");
+    }
     const ms = Date.now() / 1000, t = Math.floor(ms);
     const e = await db.prepare("SELECT * FROM meteor_events WHERE id = ? AND cancelled = 0").bind(id).first();
     if (!e || ms < e.starts_at || ms >= e.ends_at + METEOR_GRACE) throw new HttpError("The shower is not active", 409);
-    const from = e.starts_at + wave * METEOR_WAVE;
-    if (wave < 0 || from >= e.ends_at || ms < from || ms >= from + METEOR_WAVE + METEOR_GRACE) {
-      throw new HttpError("This meteor is gone", 409);
-    }
-    const amount = meteorReward(), type = "meteor:" + id;
-    try {
-      // All or nothing: a repeated wave or an empty pool fails the whole batch.
-      await db.batch([
-        db.prepare("INSERT INTO meteor_hits (event_id, user_id, wave, amount_micro, created_at) VALUES (?, ?, ?, ?, ?)").bind(id, user.id, wave, amount, t),
-        db.prepare("UPDATE meteor_events SET paid_micro = paid_micro + ? WHERE id = ?").bind(amount, id),
-        db.prepare("UPDATE users SET balance_micro = balance_micro + ? WHERE id = ?").bind(amount, user.id),
-        // one history line per round
-        db.prepare(`
-          INSERT INTO transactions (user_id, amount_micro, type, created_at)
-          SELECT ?, 0, ?, ? WHERE NOT EXISTS (SELECT 1 FROM transactions WHERE user_id = ? AND type = ?)
-        `).bind(user.id, type, t, user.id, type),
-        db.prepare("UPDATE transactions SET amount_micro = amount_micro + ? WHERE user_id = ? AND type = ?").bind(amount, user.id, type)
-      ]);
-    } catch (err) {
-      if (/CHECK/i.test(err.message)) throw new HttpError("All rewards of this shower are collected", 409);
-      if (/UNIQUE|PRIMARY/i.test(err.message)) throw new HttpError("Already collected", 409);
-      throw err;
+    const wanted = [...new Set(body.meteors)].filter(i => {
+      if (!Number.isInteger(i) || i < 0 || i >= METEOR_COUNT) return false;
+      const from = e.starts_at + i * METEOR_EVERY;
+      return from < e.ends_at && ms >= from && ms < from + METEOR_FALL + METEOR_GRACE;
+    });
+
+    const type = "meteor:" + id, rewards = {};
+    for (let attempt = 0; wanted.length && attempt < 3; attempt++) {
+      const taken = new Set((await db.prepare(
+        "SELECT wave FROM meteor_hits WHERE event_id = ? AND user_id = ?"
+      ).bind(id, user.id).all()).results.map(h => h.wave));
+      const fresh = wanted.filter(i => !taken.has(i)).map(i => [i, meteorReward()]);
+      if (!fresh.length) break;
+      const sum = fresh.reduce((s, [, a]) => s + a, 0);
+      try {
+        // All or nothing: a meteor taken meanwhile or an empty pool fails the whole batch.
+        await db.batch([
+          ...fresh.map(([i, a]) => db.prepare(
+            "INSERT INTO meteor_hits (event_id, user_id, wave, amount_micro, created_at) VALUES (?, ?, ?, ?, ?)"
+          ).bind(id, user.id, i, a, t)),
+          db.prepare("UPDATE meteor_events SET paid_micro = paid_micro + ? WHERE id = ?").bind(sum, id),
+          db.prepare("UPDATE users SET balance_micro = balance_micro + ? WHERE id = ?").bind(sum, user.id),
+          // one history line per round
+          db.prepare(`
+            INSERT INTO transactions (user_id, amount_micro, type, created_at)
+            SELECT ?, 0, ?, ? WHERE NOT EXISTS (SELECT 1 FROM transactions WHERE user_id = ? AND type = ?)
+          `).bind(user.id, type, t, user.id, type),
+          db.prepare("UPDATE transactions SET amount_micro = amount_micro + ? WHERE user_id = ? AND type = ?").bind(sum, user.id, type)
+        ]);
+        for (const [i, a] of fresh) rewards[i] = formatBalance(a);
+        break;
+      } catch (err) {
+        if (/CHECK/i.test(err.message)) throw new HttpError("All rewards of this shower are collected", 409);
+        if (!/UNIQUE|PRIMARY/i.test(err.message)) throw err;
+      }
     }
     const mine = await db.prepare(
-      "SELECT SUM(amount_micro) AS total, COUNT(*) AS hits FROM meteor_hits WHERE event_id = ? AND user_id = ?"
+      "SELECT COALESCE(SUM(amount_micro), 0) AS total, COUNT(*) AS hits FROM meteor_hits WHERE event_id = ? AND user_id = ?"
     ).bind(id, user.id).first();
-    return { reward: formatBalance(amount), total: formatBalance(mine.total), hits: mine.hits };
+    return { rewards, total: formatBalance(mine.total), hits: mine.hits };
   },
 
   // Admin: { delay } start a round in 1, 5 or 30 minutes.

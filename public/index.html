@@ -79,8 +79,9 @@ body.has-nav[data-tab="mine"] .cover-wrap{display:block}
  -webkit-background-clip:text;background-clip:text;color:transparent
 }
 /* ---------- games ---------- */
-.mt-stage{position:relative;height:330px;margin:14px -18px 14px;overflow:hidden;background:radial-gradient(circle at 70% 10%,rgba(124,92,255,.35),transparent 55%),radial-gradient(circle at 10% 100%,rgba(255,90,10,.25),transparent 55%),#04050c}
-.mt-stage canvas{position:absolute;inset:0;width:100%;height:100%}
+.mt-stage{position:relative;height:min(460px,58vh);user-select:none;-webkit-user-select:none;margin:14px -18px 14px;overflow:hidden;background:radial-gradient(circle at 70% 10%,rgba(124,92,255,.35),transparent 55%),radial-gradient(circle at 10% 100%,rgba(255,90,10,.25),transparent 55%),#04050c}
+.mt-stage canvas{position:absolute;inset:0;width:100%;height:100%;-webkit-tap-highlight-color:transparent}
+.mt-stage.on canvas{touch-action:none;cursor:crosshair}
 .mt-mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 16px;pointer-events:none}
 .mt-mid .big{font:900 44px/1.1 var(--display);text-shadow:0 0 30px rgba(255,159,10,.8);margin-top:8px;font-variant-numeric:tabular-nums}
 .mt-mid .sub{color:var(--muted);font-size:12.5px;margin-top:8px}
@@ -570,15 +571,14 @@ body.has-nav[data-tab="mine"] .cover-wrap{display:block}
   <div class="pane hidden" data-pane="games">
    <div class="glass card">
     <div class="sec-title grad-text">VOLTIX: METEOR SHOWER</div>
-    <p class="sec-sub">5 minutes. A meteor every 6 seconds. Tap COLLECT before it lands.</p>
-    <div class="mt-stage">
+    <p class="sec-sub">30 seconds. Meteors fall non-stop: tap them before they land!</p>
+    <div class="mt-stage" id="mtStage">
      <canvas id="mtCanvas"></canvas>
-     <div class="mt-hud hidden" id="mtHud"><span>⏱ <b id="mtLeft">5:00</b></span><span>☄️ <b id="mtHits">0</b></span><span><b id="mtTotal">0</b> VOLTIX</span></div>
+     <div class="mt-hud hidden" id="mtHud"><span>⏱ <b id="mtLeft">0:30</b></span><span>☄️ <b id="mtHits">0</b></span><span><b id="mtTotal">0</b> VOLTIX</span></div>
      <div class="mt-mid" id="mtMid"><div class="label" id="mtLabel">Loading</div><div class="big" id="mtBig"></div><div class="sub" id="mtSub"></div></div>
     </div>
-    <button class="cta" id="mtBtn" disabled>Collect</button>
     <div class="mt-odds" id="mtOdds"></div>
-    <p class="hint">Free to play. One meteor per wave, rewards are random and go straight to your balance. Each round gives out at most 10,000 VOLTIX in total. One account per person, no bots.</p>
+    <p class="hint">Free to play. Every meteor you tap gives a random reward that goes straight to your balance. Each round gives out at most 10,000 VOLTIX in total. One account per person, no bots.</p>
    </div>
    <div class="glass card hidden" id="mtWin">
     <div class="label">🏆 Last round winners</div>
@@ -1536,7 +1536,8 @@ async function loadAdmin(){
 }
 
 // ---------------------------------------------------------------- Meteor Shower
-let mt = null, mtOff = 0, mtSent = -1, mtBusy = false, mtLoading = false, mtHitAt = 0, mtHitText = "", mtCheckAt = 0;
+let mt = null, mtOff = 0, mtLoading = false, mtCheckAt = 0, mtWasOn = false;
+let mtTaken = new Set(), mtQueue = [], mtFx = [], mtSending = false;
 const mtNow = () => Date.now() / 1000 + mtOff;
 
 async function loadMeteor(){
@@ -1548,9 +1549,9 @@ async function loadMeteor(){
 }
 function setMeteor(d, t0){
  mtOff = (d.now_ms - (t0 + Date.now()) / 2) / 1000;
- if (!mt || !mt.event || !d.event || mt.event.id !== d.event.id) mtSent = -1;
+ if (!mt || !mt.event || !d.event || mt.event.id !== d.event.id) { mtTaken = new Set(); mtQueue = []; }
  mt = d;
- if (d.mine) mtSent = Math.max(mtSent, d.mine.last_wave);
+ if (d.mine) d.mine.taken.forEach(i => mtTaken.add(i));
  $("mtOdds").innerHTML = d.rewards.map(r => `<div>${r.amount}<small>${r.chance}%</small></div>`).join("");
  $("mtTotal").textContent = fmt(d.mine ? d.mine.total : 0, 1);
  $("mtHits").textContent = d.mine ? d.mine.hits : 0;
@@ -1579,59 +1580,92 @@ function setMeteor(d, t0){
 }
 function mtState(){
  if (!mt || !mt.event) return { on: false };
- const t = mtNow(), e = mt.event, on = t >= e.starts_at && t < e.ends_at;
- const w = Math.floor((t - e.starts_at) / mt.wave_seconds);
- return { on, t, e, wave: w, k: on ? (t - e.starts_at) / mt.wave_seconds - w : 0 };
+ const t = mtNow(), e = mt.event;
+ return { on: t >= e.starts_at && t < e.ends_at, t, e };
 }
 function meteorTick(){
  if (!me || !token) return;
  const s = mtState();
  $("gameDot").classList.toggle("hidden", !s.on);
- const over = mt && mt.event && mtNow() >= mt.event.ends_at + 1.2;
- if (document.visibilityState === "visible" && !mtBusy && (over ? Date.now() > mtCheckAt - 18000 : Date.now() > mtCheckAt)) loadMeteor();
+ const over = mt && mt.event && mtNow() >= mt.event.ends_at + 2;
+ if (document.visibilityState === "visible" && !s.on && (over ? Date.now() > mtCheckAt - 18000 : Date.now() > mtCheckAt)) loadMeteor();
  if (activeTab !== "games" || !mt) return;
  $("mtHud").classList.toggle("hidden", !s.on);
  $("mtMid").classList.toggle("hidden", s.on);
- const btn = $("mtBtn");
+ $("mtStage").classList.toggle("on", s.on);
+ if (s.on && !mtWasOn) { haptic("heavy"); $("mtStage").scrollIntoView({ block: "center", behavior: reduceMotion ? "auto" : "smooth" }); }
+ mtWasOn = s.on;
  if (s.on) {
-  const left = Math.ceil(s.e.ends_at - s.t);
-  $("mtLeft").textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
-  const done = mtSent >= s.wave;
-  btn.disabled = done || mtBusy;
-  btn.textContent = done ? `Next meteor in ${Math.ceil((1 - s.k) * mt.wave_seconds)}` : "☄️ Collect";
-  btn.classList.toggle("ready", !done);
+  $("mtLeft").textContent = "0:" + String(Math.ceil(s.e.ends_at - s.t)).padStart(2, "0");
+  return;
+ }
+ const left = s.e ? s.e.starts_at - s.t : 0;
+ if (s.e && left > 0) {
+  $("mtLabel").textContent = left <= 60 ? "Meteors are coming" : "Next shower in";
+  $("mtBig").textContent = left <= 10 ? Math.ceil(left) : hms(left);
+  $("mtSub").textContent = date(s.e.starts_at);
  } else {
-  btn.disabled = true; btn.classList.remove("ready"); btn.textContent = "Collect";
-  const left = s.e ? s.e.starts_at - s.t : 0;
-  if (s.e && left > 0) {
-   $("mtLabel").textContent = left <= 60 ? "Meteors are coming" : "Next shower in";
-   $("mtBig").textContent = left <= 10 ? Math.ceil(left) : hms(left);
-   $("mtSub").textContent = date(s.e.starts_at);
-  } else {
-   $("mtLabel").textContent = s.e ? "Shower is over" : "Meteor Shower";
-   $("mtBig").textContent = s.e ? "🏆" : "Soon";
-   $("mtSub").textContent = s.e ? "Counting the winners…" : "";
-  }
+  $("mtLabel").textContent = s.e ? "Shower is over" : "Meteor Shower";
+  $("mtBig").textContent = s.e ? "🏆" : "Soon";
+  $("mtSub").textContent = s.e ? "Counting the winners…" : "";
  }
 }
 setInterval(meteorTick, 200);
 
-$("mtBtn").addEventListener("click", async () => {
+// Where meteor i is now, in CSS pixels; null if it is not falling. Same for every player.
+function meteorPos(i, s, w, h){
+ const k = (s.t - s.e.starts_at - i * mt.meteors.every) / mt.meteors.fall;
+ if (k < 0 || k >= 1) return null;
+ const rnd = n => { const v = Math.sin((s.e.id * 131 + i) * 12.9898 + n * 78.233) * 43758.5453; return v - Math.floor(v); };
+ const r = 15 + rnd(1) * 9, x0 = r + rnd(2) * (w - 2 * r);
+ const x1 = Math.min(w - r, Math.max(r, x0 + (rnd(3) - .5) * w * .7));
+ const dy = h + 2 * r, len = Math.hypot(x1 - x0, dy);
+ return { i, r, x: x0 + (x1 - x0) * k, y: -r + dy * k, dx: (x1 - x0) / len, dy: dy / len };
+}
+function meteorsNow(s, w, h){
+ const last = Math.min(mt.meteors.count - 1, Math.floor((s.t - s.e.starts_at) / mt.meteors.every));
+ const first = Math.max(0, last - Math.ceil(mt.meteors.fall / mt.meteors.every));
+ const list = [];
+ for (let i = first; i <= last; i++) if (!mtTaken.has(i)) { const p = meteorPos(i, s, w, h); if (p) list.push(p); }
+ return list;
+}
+$("mtCanvas").addEventListener("pointerdown", ev => {
  const s = mtState();
- if (!s.on || mtBusy || mtSent >= s.wave) return;
- mtBusy = true; mtSent = s.wave; haptic("medium"); meteorTick();
- try {
-  const r = await api("/api/games/meteor/collect", { method: "POST", body: { event_id: s.e.id, wave: s.wave } });
-  if (mt.mine) Object.assign(mt.mine, { total: r.total, hits: r.hits });
-  $("mtTotal").textContent = fmt(r.total, 1); $("mtHits").textContent = r.hits;
-  me.balance = (Number(me.balance) + Number(r.reward)).toFixed(6); setBalance(me.balance);
-  mtHitAt = performance.now(); mtHitText = "+" + Number(r.reward);
-  floatText($("mtBtn"), `+${Number(r.reward)} VOLTIX`);
-  if (Number(r.reward) >= 5) burst($("mtBtn"));
-  haptic(Number(r.reward) >= 5 ? "success" : "light");
- } catch (e) { toast(e.message, true); }
- finally { mtBusy = false; meteorTick(); }
+ if (!s.on) return;
+ ev.preventDefault();
+ const c = $("mtCanvas"), b = c.getBoundingClientRect(), x = ev.clientX - b.left, y = ev.clientY - b.top;
+ let best = null, bd = 1e9;
+ for (const p of meteorsNow(s, b.width, b.height)) {
+  const d = Math.hypot(p.x - x, p.y - y);
+  if (d < Math.max(34, p.r * 1.7) && d < bd) { best = p; bd = d; }
+ }
+ if (!best) return;
+ mtTaken.add(best.i);
+ mtQueue.push(best.i);
+ mtFx.push({ i: best.i, x: best.x, y: best.y, at: performance.now(), text: "" });
+ haptic("light");
 });
+// Taps are sent together a few times per second.
+async function sendTaps(){
+ if (mtSending || !mtQueue.length || !mt || !mt.event) return;
+ mtSending = true;
+ const ids = mtQueue.splice(0, mt.meteors.batch), event = mt.event.id;
+ try {
+  const r = await api("/api/games/meteor/collect", { method: "POST", body: { event_id: event, meteors: ids } });
+  let sum = 0;
+  for (const i of ids) {
+   const v = Number(r.rewards[i] || 0), f = mtFx.find(f => f.i === i);
+   sum += v;
+   if (f && v) { f.text = "+" + v; f.big = v >= 3; f.at2 = performance.now(); }
+   if (v >= 3) haptic("success");
+  }
+  $("mtTotal").textContent = fmt(r.total, 1); $("mtHits").textContent = r.hits;
+  if (me) { me.balance = (Number(me.balance) + sum).toFixed(6); setBalance(me.balance); }
+ } catch (e) { toast(e.message, true); }
+ finally { mtSending = false; }
+}
+setInterval(sendTaps, 250);
+
 document.querySelectorAll("#mtAdmin [data-delay]").forEach(b => b.addEventListener("click", () => withButton(b, async () => {
  const t0 = Date.now();
  setMeteor(await api("/api/admin/meteor/start", { method: "POST", body: { delay: Number(b.dataset.delay) } }), t0);
@@ -1645,47 +1679,51 @@ $("mtStop").addEventListener("click", async () => {
  catch (e) { toast(e.message, true); loadMeteor(); }
 });
 
-// The falling meteor. Position comes from the server clock, so everyone sees the same wave.
+// Draws the sky, the falling meteors and the explosions.
 (() => {
  const c = $("mtCanvas"), x = c.getContext("2d");
  const stars = Array.from({ length: 60 }, () => [Math.random(), Math.random(), Math.random()]);
- function rock(px, py, r, dx, dy){
-  const g = x.createLinearGradient(px, py, px - dx * r * 7, py - dy * r * 7);
+ function rock({ x: px, y: py, r, dx, dy }){
+  const g = x.createLinearGradient(px, py, px - dx * r * 5, py - dy * r * 5);
   g.addColorStop(0, "rgba(255,240,150,.95)"); g.addColorStop(.25, "rgba(255,140,20,.6)"); g.addColorStop(1, "rgba(255,40,80,0)");
   x.fillStyle = g; x.beginPath();
-  x.moveTo(px - dy * r, py + dx * r); x.lineTo(px - dx * r * 7, py - dy * r * 7); x.lineTo(px + dy * r, py - dx * r);
+  x.moveTo(px - dy * r, py + dx * r); x.lineTo(px - dx * r * 5, py - dy * r * 5); x.lineTo(px + dy * r, py - dx * r);
   x.fill();
-  const b = x.createRadialGradient(px, py, 0, px, py, r * 1.9);
-  b.addColorStop(0, "rgba(255,220,110,.8)"); b.addColorStop(1, "rgba(255,120,0,0)");
-  x.fillStyle = b; x.beginPath(); x.arc(px, py, r * 1.9, 0, 7); x.fill();
+  x.fillStyle = "rgba(255,160,40,.28)"; x.beginPath(); x.arc(px, py, r * 1.5, 0, 7); x.fill();
   x.fillStyle = "#5b3a2c"; x.beginPath(); x.arc(px, py, r, 0, 7); x.fill();
   x.fillStyle = "#3a231b";
   for (const [a, d, s] of [[.6, .45, .24], [2.4, .5, .2], [4.2, .4, .28]]) { x.beginPath(); x.arc(px + Math.cos(a) * r * d, py + Math.sin(a) * r * d, r * s, 0, 7); x.fill(); }
-  x.fillStyle = "#FFD60A"; x.font = `900 ${r}px sans-serif`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("⚡", px, py);
+  x.fillStyle = "#FFD60A"; x.beginPath();
+  [[.12, -.6], [-.38, .1], [-.03, .1], [-.12, .6], [.38, -.12], [.03, -.12]].forEach(([a, b], n) => n ? x.lineTo(px + a * r, py + b * r) : x.moveTo(px + a * r, py + b * r));
+  x.fill();
  }
  function frame(now){
   requestAnimationFrame(frame);
   if (activeTab !== "games" || !me || !c.clientWidth || document.visibilityState !== "visible") return;
-  const q = Math.min(devicePixelRatio || 1, 2), w = c.clientWidth * q, h = c.clientHeight * q;
-  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  const q = Math.min(devicePixelRatio || 1, 2), w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== Math.round(w * q) || c.height !== Math.round(h * q)) { c.width = Math.round(w * q); c.height = Math.round(h * q); }
+  x.setTransform(q, 0, 0, q, 0, 0);
   x.clearRect(0, 0, w, h);
-  for (const [sx, sy, sr] of stars) { x.globalAlpha = reduceMotion ? .5 : .3 + .5 * Math.abs(Math.sin(now / 900 + sr * 9)); x.fillStyle = "#fff"; x.beginPath(); x.arc(sx * w, sy * h, (sr + .4) * q, 0, 7); x.fill(); }
+  x.fillStyle = "#fff";
+  for (const [sx, sy, sr] of stars) { x.globalAlpha = reduceMotion ? .5 : .3 + .5 * Math.abs(Math.sin(now / 900 + sr * 9)); x.beginPath(); x.arc(sx * w, sy * h, sr + .4, 0, 7); x.fill(); }
   x.globalAlpha = 1;
   const s = mtState();
-  if (s.on) {
-   const rnd = Math.abs(Math.sin((s.e.id * 31 + s.wave) * 12.9898)) % 1, right = s.wave % 2;
-   const x0 = right ? w * (.75 + rnd * .3) : w * (.25 - rnd * .3), x1 = right ? w * (.15 + rnd * .3) : w * (.85 - rnd * .3);
-   const len = Math.hypot(x1 - x0, h * 1.1), dx = (x1 - x0) / len, dy = h * 1.1 / len;
-   const done = mtSent >= s.wave && !mtBusy;
-   if (!done) rock(x0 + (x1 - x0) * s.k, -h * .05 + h * 1.05 * s.k, 22 * q, dx, dy);
-   const a = (now - mtHitAt) / 1000;
-   if (mtHitAt && a < 1.3) {
-    const cx = w / 2, cy = h / 2;
-    x.globalAlpha = 1 - a / 1.3;
-    if (!reduceMotion) for (let i = 0; i < 26; i++) { const an = i * 2.4, d = (30 + i * 5) * q * Math.sqrt(a); x.fillStyle = i % 3 ? "#FFD60A" : "#FF6A1A"; x.beginPath(); x.arc(cx + Math.cos(an) * d, cy + Math.sin(an) * d, (4 - i % 3) * q, 0, 7); x.fill(); }
-    x.fillStyle = "#FFF27A"; x.font = `900 ${46 * q}px Unbounded,sans-serif`; x.textAlign = "center"; x.textBaseline = "middle"; x.shadowColor = "#FF9F0A"; x.shadowBlur = 24 * q;
-    x.fillText(mtHitText, cx, cy - a * 30 * q); x.shadowBlur = 0; x.globalAlpha = 1;
+  if (s.on) for (const p of meteorsNow(s, w, h)) rock(p);
+  const t = performance.now();
+  mtFx = mtFx.filter(f => t - f.at < 1600);
+  x.textAlign = "center"; x.textBaseline = "middle";
+  for (const f of mtFx) {
+   const a = (t - f.at) / 500;
+   if (a < 1 && !reduceMotion) {
+    x.globalAlpha = 1 - a;
+    for (let i = 0; i < 12; i++) { const an = i * 2.4 + f.i, d = (14 + i * 3) * Math.sqrt(a); x.fillStyle = i % 3 ? "#FFD60A" : "#FF6A1A"; x.beginPath(); x.arc(f.x + Math.cos(an) * d, f.y + Math.sin(an) * d, 3.4 - i % 3, 0, 7); x.fill(); }
    }
+   const b = f.text ? (t - f.at2) / 900 : 1;
+   if (b < 1) {
+    x.globalAlpha = 1 - b; x.fillStyle = f.big ? "#FF4D9D" : "#FFF27A"; x.font = `900 ${f.big ? 30 : 18}px Unbounded,sans-serif`;
+    x.fillText(f.text, Math.min(w - 34, Math.max(34, f.x)), Math.max(40, f.y) - b * 26);
+   }
+   x.globalAlpha = 1;
   }
  }
  requestAnimationFrame(frame);

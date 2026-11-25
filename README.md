@@ -114,7 +114,7 @@ All responses are JSON `{ success, ... }`. Authenticated routes need `Authorizat
 | GET/POST | `/api/admin/purchases[/process]` | admin | paid orders; mark as sent |
 | GET  | `/api/admin/stats` | admin | user counts: total, new and active in 24 h |
 | GET  | `/api/games/meteor` | ✓ | Meteor Shower: next or running round, my score, last winners |
-| POST | `/api/games/meteor/collect` | ✓ | `{ event_id, wave }` random reward, one per 6-second wave (max 10,000 VOLTIX per round for everyone) |
+| POST | `/api/games/meteor/collect` | ✓ | `{ event_id, meteors: [i] }` random rewards, each of the 112 meteors once while it falls (30 s round, max 10,000 VOLTIX per round for everyone) |
 | POST | `/api/admin/meteor/start`, `/stop` | admin | `{ delay }` 60/300/1800 s; `{ event_id }` stop or cancel |
 | POST | `/api/checkin` | ✓ | daily bonus: 10 VOLTIX × streak day (max 70) |
 | GET  | `/api/tasks` | ✓ | one-time tasks with progress |
